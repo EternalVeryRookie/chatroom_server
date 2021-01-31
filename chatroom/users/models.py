@@ -6,10 +6,6 @@ from django.http.request import HttpRequest
 from django.utils import timezone
 
 
-from .auth.google_auth import GoogleAuth
-from .auth.my_app_auth import MyAppAuth
-
-
 class UserName(models.Model):
     username = models.CharField(
         max_length=150,
@@ -25,34 +21,6 @@ class UserName(models.Model):
     def __str__(self):
         return self.username
 
-
-    @property
-    def email(self):
-        user = self.user
-        if user:
-            return user.email
-            
-        return ""
-
-
-    def get_email(self, request):
-        """
-        emailは自分以外には見せない。アプリケーション内でemailが必要な場合はこちらを使用する。
-        """
-        if self.is_same_user(request):
-            return self.user.email
-        
-        return ""
-
-
-    def is_same_user(self, request:HttpRequest):
-        if hasattr(self, "userongoogle"):
-            return GoogleAuth().user_id(request) == self.userongoogle.id
-        elif hasattr(self, "useronmyapp"):
-            return MyAppAuth().user_id(request) == self.useronmyapp.id
-
-        return False
-
     
     @property
     def user(self):
@@ -62,6 +30,15 @@ class UserName(models.Model):
             return self.useronmyapp
 
         return None
+        
+
+    @property
+    def email(self):
+        user = self.user
+        if user:
+            return user.email
+            
+        return ""
 
 
 class CustomUserManager(UserManager):

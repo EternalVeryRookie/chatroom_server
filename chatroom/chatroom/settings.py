@@ -141,7 +141,7 @@ CHANNEL_LAYERS = {
 }
 
 
-CORS_ORIGIN_WHITELIST = ["http://localhost:3000", "http://localhost:8080"]
+CORS_ORIGIN_WHITELIST = ["http://localhost:3000", "http://localhost:8080", "http://127.0.0.1:8080"]
 
 CORS_ALLOW_HEADERS = (
     "Access-Control-Allow-Origin",
@@ -154,3 +154,4 @@ CORS_ALLOW_CREDENTIALS = True
 
 SESSION_COOKIE_SAMESITE = "None"
 SESSION_COOKIE_SECURE = True
+SESSION_COOKIE_HTTPONLY = False

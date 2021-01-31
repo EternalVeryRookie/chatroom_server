@@ -6,12 +6,15 @@ from typing import NoReturn
 import google_auth_oauthlib.flow
 from django.http.request import HttpRequest
 
+from ..repository import GoogleUserRepository
+from ..models import UserOnGoogle
 
 
 # Googleの名前があるのでこれは外側の層。内側にSSOモジュールを追加するのがよさそう。
 class GoogleAuth:
-    def __init__(self) -> None:
+    def __init__(self, request:HttpRequest) -> None:
         self.__cred_filepath = pathlib.Path(__file__).parent / "google_client_secret.json"
+        self.__request = request
 
 
     def create_auth_url(self):
@@ -52,17 +55,28 @@ class GoogleAuth:
         return username, payload["sub"], payload["email"]
         
 
-    def sign_out(self, request:HttpRequest)->NoReturn:
-        if self.is_sign_in(request):
-            del request.session["google-user"]
+    def sign_out(self)->NoReturn:
+        if self.is_sign_in():
+            del self.__request.session["google-user"]
 
 
-    def user_id(self, request:HttpRequest)->str:
-        if self.is_sign_in(request):
-            return request.session["google-user"]["id"]
+    @property
+    def user_id(self)->str:
+        if self.is_sign_in():
+            return self.__request.session["google-user"]["id"]
 
         return None
 
-    def is_sign_in(self, request:HttpRequest)->bool:
-        return "google-auth" in request.session
+
+    @property
+    def current_user(self)->UserOnGoogle:
+        if self.user_id is None:
+            return None
+
+        return GoogleUserRepository().find(self.user_id)
+
+
+    @property
+    def is_sign_in(self)->bool:
+        return "google-user" in self.__request.session
 

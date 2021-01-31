@@ -1,12 +1,15 @@
+from typing import Final
 from django.http.request import HttpRequest
-from django.http.response import HttpResponse, JsonResponse
+from django.http.response import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
 from .repository import GoogleUserRepository
 from .auth.google_auth import GoogleAuth
-from .auth.google_auth_consumer import notify_google_auth_result
+from .auth.auth import Auth
 
+
+OAUTH_REDIRECT_URL: Final[str] = "http://127.0.0.1:8080"
 
 @require_GET
 def google_auth_callback(request:HttpRequest) -> HttpResponse:
@@ -20,6 +23,7 @@ def google_auth_callback(request:HttpRequest) -> HttpResponse:
         generated_state = request.session["state"]
  
     try:
+        Auth(request).sign_out()
         username, user_id, email = GoogleAuth().authentication(code, generated_state, request.GET.get(key="state", default=""), request.session)
         if username is None:
             return JsonResponse({"isok": False, "errors": [{"message": "authentication failed", "error_type": "auth error"}]})
@@ -27,9 +31,8 @@ def google_auth_callback(request:HttpRequest) -> HttpResponse:
         user = GoogleUserRepository().create(username, user_id, email)
         user.last_login = timezone.now()
         user.save()
-        
-        notify_google_auth_result(generated_state)
-    except:
+        request.session.save()
+    except Exception as e:
         return JsonResponse({"isok": False, "errors": [{"message": "authentication failed", "error_type": "auth error"}]})
 
-    return JsonResponse({"isok": True, "id": user.id})
+    return HttpResponseRedirect(OAUTH_REDIRECT_URL)
