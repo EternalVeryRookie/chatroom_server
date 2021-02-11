@@ -11,6 +11,7 @@ from .repository import MyAppUserRepository
 from .auth.my_app_auth import MyAppAuth
 from .auth.auth import Auth
 from .auth.google_auth import GoogleAuth
+from errors.graphql_errors import Error
 
 import json
 
@@ -52,11 +53,6 @@ class Query(graphene.ObjectType):
 
     def resolve_all_user(root, info):
         return UserName.objects.all()
-
-
-class Error(graphene.ObjectType):
-    message = graphene.String()
-    error_type = graphene.String()
 
 
 class SignUp(graphene.Mutation):

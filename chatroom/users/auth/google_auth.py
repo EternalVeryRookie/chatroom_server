@@ -56,13 +56,13 @@ class GoogleAuth:
         
 
     def sign_out(self)->NoReturn:
-        if self.is_sign_in():
+        if self.is_sign_in:
             del self.__request.session["google-user"]
 
 
     @property
     def user_id(self)->str:
-        if self.is_sign_in():
+        if self.is_sign_in:
             return self.__request.session["google-user"]["id"]
 
         return None

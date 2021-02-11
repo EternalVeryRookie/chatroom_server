@@ -1,5 +1,5 @@
 chatroom/runserver.sh
 chatroom/db.sqlite3
-/*.txt
+*.txt
 __pycache__/
 chatroom/users/auth/google_client_secret.json

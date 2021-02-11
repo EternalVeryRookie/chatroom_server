@@ -25,7 +25,7 @@ class MyAppAuth:
 
     @property
     def user_id(self)->str:
-        if not self.is_sign_in():
+        if not self.is_sign_in:
             return None
 
         return self.__request.user.id
