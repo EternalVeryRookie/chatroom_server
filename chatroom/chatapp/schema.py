@@ -8,7 +8,6 @@ from graphene_django import DjangoObjectType
 from graphene_django.filter import DjangoFilterConnectionField
 import django_filters
 
-from users.schema import UserNameNode
 from users.auth.auth import Auth
 from errors.graphql_errors import Error
 
