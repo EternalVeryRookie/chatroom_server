@@ -17,10 +17,8 @@ class UserName(models.Model):
         }
     )
 
-
     def __str__(self):
         return self.username
-
     
     @property
     def user(self):

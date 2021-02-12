@@ -1,6 +1,6 @@
-from django.contrib.sessions.backends.base import SessionBase
 from django.core.exceptions import ValidationError
-from .models import UserName, UserOnGoogle
+from .models import UserName
+from graphql_relay import from_global_id
 from django.db.utils import IntegrityError
 from graphene_django import DjangoObjectType
 from graphene_django.filter import DjangoFilterConnectionField
@@ -138,11 +138,57 @@ class SingleSignOn(graphene.Mutation):
         return SingleSignOn(ok=True, errors=None, redirect_url=auth_url)
 
 
+class RenameUserName(relay.ClientIDMutation):
+    class Input:
+        new_name = graphene.String()
+        id = graphene.ID()
+
+    ok = graphene.Boolean()
+    errors = graphene.List(Error)
+    user_name = graphene.Field(UserNameNode)
+
+    @classmethod
+    def mutate_and_get_payload(cls, root, info, new_name, id):
+        try:
+            nod_type, primary_id = from_global_id(id)
+        except UnicodeDecodeError:
+            err = Error(message= f"id「{id}」のユーザーが見つかりませんでした", error_type="UserName.DoesNotExist")
+            return RenameUserName(ok=False, errors=[err], user_name=None)
+
+        if nod_type != "UserNameNode":
+            err = Error(message= f"id「{id}」のユーザーが見つかりませんでした", error_type="UserName.DoesNotExist")
+            return RenameUserName(ok=False, errors=[err], user_name=None)
+
+        try:
+            username: UserName = UserName.objects.get(pk=primary_id)
+        except UserName.DoesNotExist:
+            err = Error(message= f"id「{id}」のユーザーが見つかりませんでした", error_type="UserName.DoesNotExist")
+            return RenameUserName(ok=False, errors=[err], user_name=None)
+
+
+        try:
+            username.username = new_name
+            username.full_clean()
+            username.save()
+        except ValidationError as validation_error:
+            messages = json.loads(str(validation_error).replace("'", '"'))
+            errors = []
+            for key in messages:
+                for msg in messages[key]:
+                    errors.append(Error(message=msg, error_type=key))
+
+            return RenameUserName(ok=False, errors=errors, user_name=None)
+
+        return RenameUserName(ok=True, errors=None, user_name=username)
+            
+
+
 class Mutation(graphene.ObjectType):
     sign_up = SignUp.Field()
     sign_in = SignIn.Field()
     sign_out = SignOut.Field()
     single_sign_on = SingleSignOn.Field()
+    rename_user_name = RenameUserName.Field()
 
 
 schema = graphene.Schema(query=Query, mutation=Mutation)
