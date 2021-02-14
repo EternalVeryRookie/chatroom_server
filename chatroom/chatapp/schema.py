@@ -1,12 +1,18 @@
-from django_filters.filters import ChoiceFilter
-from graphene_django.types import ErrorType
-from .models import Chatroom, ChatroomMember, MemberRoles
+from inspect import currentframe
+from django.contrib.auth.hashers import make_password, check_password
+from django.utils import timezone
+from .models import Chatroom, ChatroomMember, MemberRoles, PrivateChatroom, PrivateChatroomMember
+from users.schema import UserNameNode
+from users.models import UserName
+
 import graphene
 from graphene import relay
 from graphql_relay import from_global_id
 from graphene_django import DjangoObjectType
 from graphene_django.filter import DjangoFilterConnectionField
 import django_filters
+import hashlib
+import hmac
 
 from users.auth.auth import Auth
 from errors.graphql_errors import Error
@@ -20,53 +26,136 @@ class ChatroomFilter(django_filters.FilterSet):
             "create_date": ["exact"],
             "is_active": ["exact"],
             "create_user": ["exact"],
-            "is_public": ["exact"]
         }
 
 
 class ChatroomNode(DjangoObjectType):
     class Meta:
         model = Chatroom
-        filterset_class = ChatroomFilter
+        filter_fields  =  {
+            "room_name": ["exact", "icontains", "istartswith"],
+            "create_date": ["exact"],
+            "is_active": ["exact"],
+            "create_user": ["exact"],
+        }        
         interfaces = (relay.Node, )
+
+
+class PrivateChatroomNode(DjangoObjectType):
+    class Meta:
+        model = PrivateChatroom
+        filter_fields  =  {
+            "room_name": ["exact", "icontains", "istartswith"],
+            "create_date": ["exact"],
+            "is_active": ["exact"],
+            "create_user": ["exact"],
+        } 
+        interfaces = (relay.Node, )
+        exclude = ("password",)
 
     @classmethod
     def get_queryset(cls, queryset, info):
-        request_user = Auth(info.context).current_user
-
-        #privateルームは作成者にのみ閲覧可能な状態
-        #todo 権限を与えられたユーザーなら閲覧可能にする
-        return  queryset.filter(is_public=True, is_active=True) \
-            | queryset.filter(is_public=False, is_active=True, create_user=request_user)
-
+        auth = Auth(info.context)
+        return queryset.filter(create_user=auth.current_user)
+        
 
 class Query(graphene.ObjectType):
     chatroom = relay.Node.Field(ChatroomNode)
     all_chatrooms = DjangoFilterConnectionField(ChatroomNode)
+    all_private_rooms = DjangoFilterConnectionField(PrivateChatroomNode)
+
+
+def check_authorization():
+    pass
 
 
 class CreateChatroom(graphene.Mutation):
     class Arguments:
         name = graphene.String()
-        is_public = graphene.Boolean()
 
     ok = graphene.Boolean()
     errors = graphene.List(Error)
     chatroom = graphene.Field(ChatroomNode)
 
     @classmethod
-    def mutate(cls, root, info, name:str, is_public:bool):
+    def mutate(cls, root, info, name:str):
         auth = Auth(info.context)
         if not auth.is_sign_in:
             return CreateChatroom(ok=False, errors=[Error(message="サインインしてください", error_type="not auth")])
 
         chatroom = Chatroom.objects.create(
             room_name=name,
-            create_user=auth.current_user,
-            is_public=is_public
+            create_user=auth.current_user
         )
 
+        member = ChatroomMember()
+        member.room = chatroom
+        member.user = auth.current_user
+        member.role = MemberRoles.OWNER
+        member.save()
+
         return CreateChatroom(ok=True, errors=None, chatroom=chatroom)
+
+
+class CreatePrivateChatroom(graphene.Mutation):
+    class Arguments:
+        name = graphene.String()
+        password = graphene.String()
+
+    ok = graphene.Boolean()
+    errors = graphene.List(Error)
+
+    
+    @classmethod
+    def mutate(cls, root, info, name:str, password:str):
+        auth = Auth(info.context)
+        if not auth.is_sign_in:
+            return CreateChatroom(ok=False, errors=[Error(message="サインインしてください", error_type="not auth")])
+        
+        hashed_password = make_password(password)
+        chatroom = PrivateChatroom(room_name=name, create_user=auth.current_user, password=hashed_password)
+        chatroom.save()
+
+        member = ChatroomMember()
+        member.room = chatroom
+        member.user = auth.current_user
+        member.role = MemberRoles.OWNER
+        member.save()
+
+        return CreateChatroom(ok=True, errors=None, chatroom=chatroom)
+
+
+#todo
+# リクエストユーザーがゲストの場合 -> 認可系エラー
+# 招待対象のユーザーが既に招待されている場合 -> 何もしない。エラーも返さない。
+# リクエストユーザー自体がprivate roomに招待されていない場合 -> ルームが存在しなかった旨のエラーを返す
+class InvitationUser(relay.ClientIDMutation):
+    class Input:
+        users = graphene.List(graphene.ID)
+        room = graphene.ID()
+
+    ok = graphene.Boolean()
+    errors = graphene.List(Error)
+
+    @classmethod
+    def mutate_and_get_payload(cls, root, info, users, room):
+        current_user = Auth(info.context).current_user
+        t, private_room_id = from_global_id(room)
+        private_room = PrivateChatroom.objects.get(pk=private_room_id)
+        
+        #ゲストに招待権限はない
+        try:
+            if PrivateChatroomMember.objects.get(user=current_user, room=private_room).role == MemberRoles.GUEST:
+                err = Error(message="ユーザーを招待する権限がありません")
+                return InvitationUser(ok=False, errors=[err])
+        except PrivateChatroomMember.DoesNotExist:
+            err = Error(message="指定のルームは存在しません")
+            return InvitationUser(ok=False, errors=[err])
+
+        for id in users:
+            t, primary_id = from_global_id(id)
+            user = UserName.objects.get(pk=primary_id)
+            PrivateChatroomMember(user=user, room=private_room, is_enter=False, role=MemberRoles.GUEST).save()
 
 
 class RenameRoomName(relay.ClientIDMutation):
@@ -151,11 +240,83 @@ class DeleteRoom(relay.ClientIDMutation):
             return DeleteRoom(ok=False, errors=[err])
 
 
+class EnterChatroom(graphene.ClientIDMutation):
+    class Input:
+        room_id = graphene.ID()
+
+    ok = graphene.Boolean()
+    errors = graphene.List(Error)
+    
+    @classmethod
+    def mutate_and_get_payload(cls, root, info, room_id):
+        try:
+            t, room_pk = from_global_id(room_id)
+            if t != "ChatroomNode":
+                err = Error(message="指定のルームは存在しません")
+                return EnterChatroom(ok=False, errors=[err])
+        except UnicodeDecodeError:
+            err = Error(message="指定のルームは存在しません")
+            return EnterChatroom(ok=False, errors=[err])
+        except Exception as e:
+            err = Error(message="エラー")
+            return EnterChatroom(ok=False, errors=[err])
+        
+        #ここでuserにroomに入る権限があるかを確認する
+        auth = Auth(info.context)
+        user: UserName = auth.current_user
+        room = Chatroom.objects.get(pk=room_pk)
+        try:
+            member = ChatroomMember.objects.get(user=user, room=room)
+            #publicならok、privateでも作成者と許可されたユーザーならok
+            member.is_enter = True
+            member.save()
+        except ChatroomMember.DoesNotExist:
+            member = ChatroomMember(user=user, room=room)
+            member.is_enter = True
+            member.save()
+
+        return EnterChatroom(ok=True, errors=None)
+
+
+class ExitChatroom(graphene.ClientIDMutation):
+    class Input:
+        room_id = graphene.ID()
+
+    ok = graphene.Boolean()
+    errors = graphene.List(Error)
+    
+    @classmethod
+    def mutate_and_get_payload(cls, root, info, room_id):
+        try:
+            t, room_pk = from_global_id(room_id)
+            if t != "ChatroomNode":
+                err = Error(message="指定のルームは存在しません")
+                return EnterChatroom(ok=False, errors=[err])
+        except UnicodeDecodeError:
+            err = Error(message="指定のルームは存在しません")
+            return EnterChatroom(ok=False, errors=[err])
+        except Exception as e:
+            err = Error(message="エラー")
+            return EnterChatroom(ok=False, errors=[err])
+
+        room = Chatroom.objects.get(pk=room_pk)
+        try:
+            member = ChatroomMember.objects.get(user=user, room=room)
+            member.is_enter = False
+            member.save()
+        except ChatroomMember.DoesNotExist:
+            err = Error(message="指定のユーザは指定のルームに入室していません")
+            return ExitChatroom(ok=False, errors=[err])
+
+        return ExitChatroom(ok=True, errors=None)
 
 class Mutation(graphene.ObjectType):
     create_chatroom = CreateChatroom.Field()
+    create_private_chatroom = CreatePrivateChatroom.Field()
     rename_room_name = RenameRoomName.Field()
     delete_room = DeleteRoom().Field()
+    enter_chatroom = EnterChatroom().Field()
+    exit_chatroom = ExitChatroom().Field()
 
 
 schema = graphene.Schema(query=Query, mutation=Mutation)
