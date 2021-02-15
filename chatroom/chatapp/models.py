@@ -1,10 +1,12 @@
 from typing import Final
+
+from graphql.language.parser import parse_selection_set
 from users.models import UserName
 from django.db import models
 
 # Create your models here.
 
-class AbstructChatroom(models.Model):
+class AbstractChatroom(models.Model):
     room_name = models.CharField(max_length=100)
     create_date = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
@@ -13,16 +15,39 @@ class AbstructChatroom(models.Model):
     def __str__(self):
         return self.room_name
 
-    class Meta:
-        abstract = True
+
+class Chatroom(AbstractChatroom):
+    @classmethod
+    def create(cls, name: str, create_user: UserName):
+        chatroom: Chatroom = cls.objects.create(
+            room_name=name,
+            create_user=create_user
+        )
+        
+        member = ChatroomMember()
+        member.room = chatroom
+        member.user = create_user
+        member.role = MemberRoles.OWNER
+        member.save()
+
+        return chatroom
 
 
-class Chatroom(AbstructChatroom):
-    pass
+class PrivateChatroom(AbstractChatroom):
+    @classmethod
+    def create(cls, name: str, create_user: UserName):
+        chatroom: PrivateChatroom = cls.objects.create(
+            room_name=name,
+            create_user=create_user
+        )
+        
+        member = PrivateChatroomMember()
+        member.room = chatroom
+        member.user = create_user
+        member.role = MemberRoles.OWNER
+        member.save()
 
-
-class PrivateChatroom(AbstructChatroom):
-    password = models.CharField(max_length=512)
+        return chatroom
 
 
 class MemberRoles(models.TextChoices):
@@ -47,15 +72,39 @@ class AbstractChatroomMember(models.Model):
 class ChatroomMember(AbstractChatroomMember):
     room = models.ForeignKey(Chatroom, on_delete=models.CASCADE)
 
-    
+    def allow_update_room(self) -> bool:
+        """
+        roomの情報を更新する権限があるかどうかを確認する
+        """
+        return self.role != MemberRoles.GUEST
+
+    def allow_delete_room(self) -> bool:
+        """
+        roomを削除する権限があるかどうかを確認する
+        """
+        return self.user == self.room.create_user
+
+
 class PrivateChatroomMember(AbstractChatroomMember):
     room = models.ForeignKey(PrivateChatroom, on_delete=models.CASCADE)
+
+    def allow_update_room(self) -> bool:
+        """
+        roomの情報を更新する権限があるかどうかを確認する
+        """
+        return self.role != MemberRoles.GUEST
+
+    def allow_delete_room(self) -> bool:
+        """
+        roomを削除する権限があるかどうかを確認する
+        """
+        return self.user == self.room.create_user
 
 
 class AbstractMessage(models.Model):
     sender = models.ForeignKey(UserName, on_delete=models.SET_NULL, null=True)
     send_date = models.DateTimeField(auto_now_add=True)
-    
+
     MAX_TEXT_LENGTH: Final[int] = 2048
     text = models.CharField(
         max_length=MAX_TEXT_LENGTH,
@@ -70,7 +119,7 @@ class AbstractMessage(models.Model):
 
 class ChatMessage(AbstractMessage):
     room = models.ForeignKey(Chatroom, on_delete=models.CASCADE)
-    
+
 
 class PrivateChatMessage(AbstractMessage):
     room = models.ForeignKey(PrivateChatroom, on_delete=models.CASCADE)

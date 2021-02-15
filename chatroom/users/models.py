@@ -2,7 +2,6 @@ from django.core.validators import EmailValidator
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, UserManager, PermissionsMixin
 from django.contrib.auth.validators import UnicodeUsernameValidator, ASCIIUsernameValidator
-from django.http.request import HttpRequest
 from django.utils import timezone
 
 

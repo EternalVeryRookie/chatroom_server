@@ -26,7 +26,7 @@ SECRET_KEY = os.environ["SERVER_SECRET_KEY"]
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ["SERVER_IS_DEBUG"] == "true"
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["django"]
 
 
 # Application definition
