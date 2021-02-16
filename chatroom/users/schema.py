@@ -1,7 +1,6 @@
 from django.core.exceptions import ValidationError
 from .models import UserName
 from graphql_relay import from_global_id
-from django.db.utils import IntegrityError
 from graphene_django import DjangoObjectType
 from graphene_django.filter import DjangoFilterConnectionField
 import graphene
@@ -11,9 +10,7 @@ from .repository import MyAppUserRepository
 from .auth.my_app_auth import MyAppAuth
 from .auth.auth import Auth
 from .auth.google_auth import GoogleAuth
-from errors.graphql_errors import Error
-
-import json
+from errors.graphql_error_decorator import reraise_graphql_error
 
 
 class UserNameNode(DjangoObjectType):
@@ -62,28 +59,15 @@ class SignUp(graphene.Mutation):
         email = graphene.String()
 
     ok = graphene.Boolean()
-    errors = graphene.List(Error)
     user = graphene.Field(UserNameNode)
 
+    @reraise_graphql_error
     @classmethod
     def mutate(cls, root, info, username, password, email):
-        try:
-            user = MyAppUserRepository().create(username, password, email)
-            MyAppAuth(info.context).sign_out()
-            user = MyAppAuth(info.context).sign_in(email, password)
-            return SignUp(ok=True, errors=None, user=user.username)
-        except ValidationError as validation_error:
-            messages = json.loads(str(validation_error).replace("'", '"'))
-            errors = []
-            for key in messages:
-                for msg in messages[key]:
-                    errors.append(Error(message=msg, error_type=key))
-
-            return SignUp(ok=False, errors=errors, user=None)
-        except IntegrityError as error:
-            errors = [Error(message=str(error), error_type="server error")]
-
-            return SignUp(ok=False, errors=errors, user=None)
+        user = MyAppUserRepository().create(username, password, email)
+        MyAppAuth(info.context).sign_out()
+        user = MyAppAuth(info.context).sign_in(email, password)
+        return SignUp(ok=True, errors=None, user=user.username)
 
 
 class SignIn(graphene.Mutation):
@@ -92,17 +76,15 @@ class SignIn(graphene.Mutation):
         password = graphene.String()
 
     ok = graphene.Boolean()
-    errors = graphene.List(Error)
     user = graphene.Field(UserNameNode)
 
+    @reraise_graphql_error
     @classmethod
     def mutate(cls, root, info, email, password):
         Auth(info.context).sign_out()
         user = MyAppAuth(info.context).sign_in(email, password)
         if user is None:
-            err = Error(message="メールアドレスまたはパスワードが異なっています", error_type="not auth")
-            return SignIn(ok=False, errors=[err], user=None)
-
+            raise Exception("メールアドレスまたはパスワードが異なっています")
 
         return SignIn(ok=True, errors=None, user=user.username)
 
@@ -113,6 +95,7 @@ class SignOut(graphene.Mutation):
 
     ok = graphene.Boolean()
 
+    @reraise_graphql_error
     @classmethod
     def mutate(cls, root, info):
         Auth(info.context).sign_out()
@@ -125,13 +108,13 @@ class SingleSignOn(graphene.Mutation):
         provider = graphene.String()
 
     ok = graphene.Boolean()
-    errors = graphene.List(Error)
     redirect_url = graphene.String()
 
+    @reraise_graphql_error
     @classmethod
     def mutate(cls, root, info, provider):
         if provider != "google":
-            return SingleSignOn(ok=False, errors=[Error(message="%s認証はサポートしていません" % provider, error_type="not support auth provider")])
+            raise Exception(f"{provider}認証はサポートしていません")
         
         auth_url, state = GoogleAuth(info.context).create_auth_url()
         info.context.session["state"] = state
@@ -144,43 +127,29 @@ class RenameUserName(relay.ClientIDMutation):
         id = graphene.ID()
 
     ok = graphene.Boolean()
-    errors = graphene.List(Error)
     user_name = graphene.Field(UserNameNode)
 
+    @reraise_graphql_error
     @classmethod
     def mutate_and_get_payload(cls, root, info, new_name, id):
         try:
             nod_type, primary_id = from_global_id(id)
-        except UnicodeDecodeError:
-            err = Error(message= f"id「{id}」のユーザーが見つかりませんでした", error_type="UserName.DoesNotExist")
-            return RenameUserName(ok=False, errors=[err], user_name=None)
+        except UnicodeDecodeError as ude:
+            raise Exception(f"id「{id}」のユーザーが見つかりませんでした") from ude
 
         if nod_type != "UserNameNode":
-            err = Error(message= f"id「{id}」のユーザーが見つかりませんでした", error_type="UserName.DoesNotExist")
-            return RenameUserName(ok=False, errors=[err], user_name=None)
+            raise Exception(f"id「{id}」のユーザーが見つかりませんでした")
 
         try:
             username: UserName = UserName.objects.get(pk=primary_id)
-        except UserName.DoesNotExist:
-            err = Error(message= f"id「{id}」のユーザーが見つかりませんでした", error_type="UserName.DoesNotExist")
-            return RenameUserName(ok=False, errors=[err], user_name=None)
+        except UserName.DoesNotExist as dne:
+            raise Exception(f"id「{id}」のユーザーが見つかりませんでした") from dne
 
+        username.username = new_name
+        username.full_clean()
+        username.save()
 
-        try:
-            username.username = new_name
-            username.full_clean()
-            username.save()
-        except ValidationError as validation_error:
-            messages = json.loads(str(validation_error).replace("'", '"'))
-            errors = []
-            for key in messages:
-                for msg in messages[key]:
-                    errors.append(Error(message=msg, error_type=key))
-
-            return RenameUserName(ok=False, errors=errors, user_name=None)
-
-        return RenameUserName(ok=True, errors=None, user_name=username)
-            
+        return RenameUserName(ok=True, user_name=username)
 
 
 class Mutation(graphene.ObjectType):
@@ -192,4 +161,3 @@ class Mutation(graphene.ObjectType):
 
 
 schema = graphene.Schema(query=Query, mutation=Mutation)
-
