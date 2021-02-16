@@ -1,6 +1,5 @@
 from typing import Final
 
-from graphql.language.parser import parse_selection_set
 from users.models import UserName
 from django.db import models
 

@@ -1,7 +1,8 @@
+from django.http import request
 from graphql.error.base import GraphQLError
 from .models import Chatroom, ChatroomMember, MemberRoles, PrivateChatroom, PrivateChatroomMember
 from users.models import UserName
-import chatapp.repository.chatroom as logic
+import chatapp.logic.chatroom_interactor as logic
 
 import graphene
 from graphene import relay
@@ -11,7 +12,7 @@ from graphene_django.filter import DjangoFilterConnectionField
 import django_filters
 
 from users.auth.auth import Auth
-from errors.graphql_errors import Error
+from errors.graphql_error_decorator import reraise_graphql_error
 
 
 class ChatroomFilter(django_filters.FilterSet):
@@ -71,9 +72,10 @@ class CreateChatroom(graphene.Mutation):
     ok = graphene.Boolean()
     chatroom = graphene.Field(ChatroomNode)
 
+    @reraise_graphql_error
     @classmethod
     def mutate(cls, root, info, name:str):
-        room = logic.create_public_chatroom(name, info.context)
+        room = logic.create_public_chatroom(info.context, name)
 
         return CreateChatroom(ok=True, chatroom=room)
 
@@ -84,9 +86,10 @@ class CreatePrivateChatroom(graphene.Mutation):
 
     ok = graphene.Boolean()
     
+    @reraise_graphql_error
     @classmethod
     def mutate(cls, root, info, name:str):
-        room = logic.create_public_chatroom(name, info.context)
+        room = logic.create_public_chatroom(info.context, name)
 
         return CreatePrivateChatroom(ok=True, chatroom=room)
 
@@ -98,21 +101,22 @@ class InvitationUser(relay.ClientIDMutation):
 
     ok = graphene.Boolean()
 
+    @reraise_graphql_error
     @classmethod
     def mutate_and_get_payload(cls, root, info, users, room):
         node_type, private_room_id = from_global_id(room)
         if node_type != "PrivateChatroomNode":
-            raise GraphQLError("指定のルームは存在しません")
+            raise Exception("指定のルームは存在しません")
         
         target_user_ids = [None] * len(users)
         for i, user_id in enumerate(users):
             node_type, primary_id = from_global_id(user_id)
             if node_type != "UserNameNode":
-                raise GraphQLError(f"指定のユーザー「{user_id}」は存在しません")
+                raise Exception(f"指定のユーザー「{user_id}」は存在しません")
             
             target_user_ids[i] = primary_id
 
-        logic.invitation(private_room_id, target_user_ids, info.context)
+        logic.invitation(info.context, private_room_id, target_user_ids)
         return InvitationUser(ok=True)
 
 
@@ -122,45 +126,21 @@ class RenameRoomName(relay.ClientIDMutation):
         id = graphene.ID()
 
     ok = graphene.Boolean()
-    errors = graphene.List(Error)
     chatroom = graphene.Field(ChatroomNode)
 
+    @reraise_graphql_error
     @classmethod
     def mutate_and_get_payload(cls, root, info, new_name, id):
         try:
-            t, primary_id = from_global_id(id)
-        except UnicodeDecodeError:
-            err = Error(message= f"id「{id}」のルームが見つかりませんでした", error_type="Chatroom.DoesNotExist")
-            return RenameRoomName(ok=False, errors=[err], chatroom=None)
+            node_type, primary_id = from_global_id(id)
+        except UnicodeDecodeError as ude:
+            raise Exception(f"id「{id}」のルームが見つかりませんでした") from ude
 
-        if t != "ChatroomNode":
-            err = Error(message= f"id「{id}」のルームが見つかりませんでした", error_type="Chatroom.DoesNotExist")
-            return RenameRoomName(ok=False, errors=[err], chatroom=None)
-            
-        try:
-            room = Chatroom.objects.get(pk=primary_id)
-        except Chatroom.DoesNotExist:
-            err = Error(message= f"id「{id}」のルームが見つかりませんでした", error_type="Chatroom.DoesNotExist")
-            return RenameRoomName(ok=False, errors=[err], chatroom=None)
+        if node_type != "ChatroomNode":
+            raise Exception(f"id「{id}」のルームが見つかりませんでした")
 
-        auth = Auth(info.context)
-        is_allow_mutate = auth.is_same_user(room.create_user)
-        if not(is_allow_mutate):
-            try:
-                member = ChatroomMember.objects.filter(user__username=auth.current_user.username).get(room=room)
-                is_allow_mutate = member.role != MemberRoles.GUEST
-            except ChatroomMember.DoesNotExist:
-                pass
-
-        if is_allow_mutate:
-            room.room_name = new_name
-            room.save()
-
-            return RenameRoomName(ok=True, errors=None, chatroom=room)
-        else:
-            #実際は認証エラーだが、権限のないユーザーにはルームが存在していることも知らせたくない
-            err = Error(message= f"id「{id}」のルームが見つかりませんでした", error_type="Chatroom.DoesNotExist")
-            return RenameRoomName(ok=False, errors=[err], chatroom=None)
+        room = logic.rename_public_room(request, primary_id, new_name)
+        return RenameRoomName(ok=True, chatroom=room)
 
 
 class DeleteRoom(relay.ClientIDMutation):
@@ -168,34 +148,21 @@ class DeleteRoom(relay.ClientIDMutation):
         id = graphene.ID()
 
     ok = graphene.Boolean()
-    errors = graphene.List(Error)
-    
+
+    @reraise_graphql_error
     @classmethod
     def mutate_and_get_payload(cls, root, info, id):
         try:
-            t, primary_id = from_global_id(id)
-        except UnicodeDecodeError:
-            err = Error(message= f"id「{id}」のルームが見つかりませんでした", error_type="Chatroom.DoesNotExist")
-            return DeleteRoom(ok=False, errors=[err])
+            node_type, primary_id = from_global_id(id)
+        except UnicodeDecodeError as ude:
+            raise Exception(f"id「{id}」のルームが見つかりませんでした") from ude
 
-        if t != "ChatroomNode":
-            err = Error(message= f"id「{id}」のルームが見つかりませんでした", error_type="Chatroom.DoesNotExist")
-            return DeleteRoom(ok=False, errors=[err])
-            
-        try:
-            room = Chatroom.objects.get(pk=primary_id, is_active=True)
-        except Chatroom.DoesNotExist:
-            err = Error(message= f"id「{id}」のルームが見つかりませんでした", error_type="Chatroom.DoesNotExist")
-            return DeleteRoom(ok=False, errors=[err])
+        if node_type != "ChatroomNode":
+            raise Exception(f"id「{id}」のルームが見つかりませんでした")
 
-        if Auth(info.context).is_same_user(room.create_user):
-            room.is_active = False
-            room.save()
-            return DeleteRoom(ok=True, errors=None)
-        else:
-            #実際は認証エラーだが、権限のないユーザーにはルームが存在していることも知らせたくない
-            err = Error(message= f"id「{id}」のルームが見つかりませんでした", error_type="Chatroom.DoesNotExist")
-            return DeleteRoom(ok=False, errors=[err])
+        logic.disable_public_room(request=info.context, room_id=primary_id)
+
+        return DeleteRoom(ok=True)
 
 
 class EnterChatroom(graphene.ClientIDMutation):
@@ -203,37 +170,21 @@ class EnterChatroom(graphene.ClientIDMutation):
         room_id = graphene.ID()
 
     ok = graphene.Boolean()
-    errors = graphene.List(Error)
+    connection_url = graphene.String()
     
+    @reraise_graphql_error
     @classmethod
     def mutate_and_get_payload(cls, root, info, room_id):
         try:
-            t, room_pk = from_global_id(room_id)
-            if t != "ChatroomNode":
-                err = Error(message="指定のルームは存在しません")
-                return EnterChatroom(ok=False, errors=[err])
+            node_type, room_pk = from_global_id(room_id)
         except UnicodeDecodeError:
-            err = Error(message="指定のルームは存在しません")
-            return EnterChatroom(ok=False, errors=[err])
-        except Exception as e:
-            err = Error(message="エラー")
-            return EnterChatroom(ok=False, errors=[err])
-        
-        #ここでuserにroomに入る権限があるかを確認する
-        auth = Auth(info.context)
-        user: UserName = auth.current_user
-        room = Chatroom.objects.get(pk=room_pk)
-        try:
-            member = ChatroomMember.objects.get(user=user, room=room)
-            #publicならok、privateでも作成者と許可されたユーザーならok
-            member.is_enter = True
-            member.save()
-        except ChatroomMember.DoesNotExist:
-            member = ChatroomMember(user=user, room=room)
-            member.is_enter = True
-            member.save()
+            raise Exception("指定のルームは存在しません")
 
-        return EnterChatroom(ok=True, errors=None)
+        if node_type != "ChatroomNode":
+            raise Exception("指定のルームは存在しません")
+
+        logic.enter_public_room(request=info.context, room_id=room_pk)
+        return EnterChatroom(ok=True, connection_url="websocket接続用のURLをreturnする")
 
 
 class ExitChatroom(graphene.ClientIDMutation):
@@ -243,6 +194,7 @@ class ExitChatroom(graphene.ClientIDMutation):
     ok = graphene.Boolean()
     errors = graphene.List(Error)
     
+    @reraise_graphql_error
     @classmethod
     def mutate_and_get_payload(cls, root, info, room_id):
         try:
