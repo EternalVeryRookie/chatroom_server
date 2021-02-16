@@ -192,33 +192,20 @@ class ExitChatroom(graphene.ClientIDMutation):
         room_id = graphene.ID()
 
     ok = graphene.Boolean()
-    errors = graphene.List(Error)
     
     @reraise_graphql_error
     @classmethod
     def mutate_and_get_payload(cls, root, info, room_id):
         try:
-            t, room_pk = from_global_id(room_id)
-            if t != "ChatroomNode":
-                err = Error(message="指定のルームは存在しません")
-                return EnterChatroom(ok=False, errors=[err])
-        except UnicodeDecodeError:
-            err = Error(message="指定のルームは存在しません")
-            return EnterChatroom(ok=False, errors=[err])
-        except Exception as e:
-            err = Error(message="エラー")
-            return EnterChatroom(ok=False, errors=[err])
+            node_type, room_pk = from_global_id(room_id)
+        except UnicodeDecodeError as ude:
+            raise Exception("指定のルームは存在しません") from ude
 
-        room = Chatroom.objects.get(pk=room_pk)
-        try:
-            member = ChatroomMember.objects.get(user=user, room=room)
-            member.is_enter = False
-            member.save()
-        except ChatroomMember.DoesNotExist:
-            err = Error(message="指定のユーザは指定のルームに入室していません")
-            return ExitChatroom(ok=False, errors=[err])
+        if node_type != "ChatroomNode":
+            raise Exception("指定のルームは存在しません")
 
-        return ExitChatroom(ok=True, errors=None)
+        logic.exit_public_room(request=info.context, room_id=room_pk)
+        return ExitChatroom(ok=True)
 
 class Mutation(graphene.ObjectType):
     create_chatroom = CreateChatroom.Field()

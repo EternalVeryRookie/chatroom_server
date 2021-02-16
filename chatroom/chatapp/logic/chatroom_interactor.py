@@ -117,3 +117,18 @@ def enter_private_room(request: HttpRequest, room_id: str):
     __enter_room(request, room_id, PrivateChatroom, PrivateChatroomMember)
 
 
+def __exit_room(request: HttpRequest, room_id: str, room_type: Type[AbstractChatroom], member_type: Type[AbstractChatroomMember]) -> None:
+    room = room_type.objects.get(pk=room_id)
+    user = Auth(request).current_user
+    member_query = member_type.objects.filter(user=user, room=room)
+    if len(member_query) > 0:
+        member_query[0].is_enter =  False
+        member_query[0].save()
+
+
+def exit_public_room(request: HttpRequest, room_id: str):
+    __exit_room(request, room_id, Chatroom, ChatroomMember)
+
+
+def exit_private_room(request: HttpRequest, room_id: str):
+    __exit_room(request, room_id, PrivateChatroom, PrivateChatroomMember)
