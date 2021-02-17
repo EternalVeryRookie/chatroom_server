@@ -27,14 +27,26 @@ class ChatroomFilter(django_filters.FilterSet):
 class ChatroomNode(DjangoObjectType):
     class Meta:
         model = Chatroom
-        filterset_class = ChatroomFilter
+        #filterset_class = ChatroomFilter
+        filter_fields =  {
+            "room_name": ["exact", "icontains", "istartswith"],
+            "create_date": ["exact"],
+            "is_active": ["exact"],
+            "create_user": ["exact"],
+        }
         interfaces = (UrlSafeEncodeNode, )
 
 
 class PrivateChatroomNode(DjangoObjectType):
     class Meta:
         model = PrivateChatroom
-        filterset_class = ChatroomFilter
+        #filterset_class = ChatroomFilter
+        filter_fields =  {
+            "room_name": ["exact", "icontains", "istartswith"],
+            "create_date": ["exact"],
+            "is_active": ["exact"],
+            "create_user": ["exact"],
+        }
         interfaces = (UrlSafeEncodeNode, )
 
     @classmethod

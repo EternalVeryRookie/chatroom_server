@@ -10,7 +10,7 @@ class UrlSafeEncodeNode(Node):
 
     @staticmethod
     def to_global_id(type_, id):
-        return base64.urlsafe_b64encode(f"{type_}:{id}".encode("utf-8"))
+        return base64.urlsafe_b64encode(f"{type_}:{id}".encode("utf-8")).decode('utf-8')
 
     @staticmethod
     def get_node_from_global_id(info, global_id, only_type=None):
