@@ -14,6 +14,9 @@ class AbstractChatroom(models.Model):
     def __str__(self):
         return self.room_name
 
+    class Meta:
+        abstract = True
+        
 
 class Chatroom(AbstractChatroom):
     @classmethod

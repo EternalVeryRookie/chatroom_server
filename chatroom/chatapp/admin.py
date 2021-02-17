@@ -1,5 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.hashers import make_password
+
+from users.models import UserName
 from .models import ChatroomMember, Chatroom, ChatMessage, PrivateChatroom, PrivateChatMessage, PrivateChatroomMember
 
 
@@ -12,11 +14,10 @@ class PrivateChatroomAdmin(admin.ModelAdmin):
     list_display = ("room_name", "is_active", "create_user", "create_date")
 
     def save_model(self, request, obj, form, change):
-        password = obj.password
-        hashed_password = make_password(password)
-        obj.password = hashed_password
+        create_user = UserName.objects.get(pk=request.POST["create_user"])
+        name = request.POST["room_name"]
 
-        obj.save()
+        PrivateChatroom.create(name=name, create_user=create_user)
 
 @admin.register(ChatroomMember)
 @admin.register(PrivateChatroomMember)
