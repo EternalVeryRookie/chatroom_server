@@ -5,9 +5,9 @@ from graphql_relay import from_global_id
 from graphene_django import DjangoObjectType
 from graphene_django.filter import DjangoFilterConnectionField
 import django_filters
-from six import reraise
 
-from .models import Chatroom, PrivateChatroom, PrivateChatroomMember
+from .models import Chatroom, PrivateChatroom
+from nodes.url_safe_encode_node import UrlSafeEncodeNode
 from .logic import chatroom_interactor as logic
 from users.auth.auth import Auth
 from errors.graphql_error_decorator import reraise_graphql_error
@@ -28,14 +28,14 @@ class ChatroomNode(DjangoObjectType):
     class Meta:
         model = Chatroom
         filterset_class = ChatroomFilter
-        interfaces = (relay.Node, )
+        interfaces = (UrlSafeEncodeNode, )
 
 
 class PrivateChatroomNode(DjangoObjectType):
     class Meta:
         model = PrivateChatroom
         filterset_class = ChatroomFilter
-        interfaces = (relay.Node, )
+        interfaces = (UrlSafeEncodeNode, )
 
     @classmethod
     def get_queryset(cls, queryset, info):
@@ -45,7 +45,7 @@ class PrivateChatroomNode(DjangoObjectType):
 
 
 class Query(graphene.ObjectType):
-    chatroom = relay.Node.Field(ChatroomNode)
+    chatroom = UrlSafeEncodeNode.Field(ChatroomNode)
     all_chatrooms = DjangoFilterConnectionField(ChatroomNode)
     all_private_rooms = DjangoFilterConnectionField(PrivateChatroomNode)
 
@@ -176,7 +176,7 @@ class DeleteRoom(relay.ClientIDMutation):
         return DeleteRoom(ok=True)
 
 
-class EnterChatroom(graphene.ClientIDMutation):
+class EnterPublicChatroom(graphene.ClientIDMutation):
     class Input:
         room_id = graphene.ID()
 
@@ -195,7 +195,29 @@ class EnterChatroom(graphene.ClientIDMutation):
             raise Exception("指定のルームは存在しません")
 
         logic.enter_public_room(request=info.context, room_id=room_pk)
-        return EnterChatroom(ok=True, connection_url="websocket接続用のURLをreturnする")
+        return EnterPublicChatroom(ok=True, connection_url="websocket接続用のURLをreturnする")
+
+
+class EnterPrivateChatroom(graphene.ClientIDMutation):
+    class Input:
+        room_id = graphene.ID()
+
+    ok = graphene.Boolean()
+    connection_url = graphene.String()
+    
+    @classmethod
+    @reraise_graphql_error
+    def mutate_and_get_payload(cls, root, info, room_id):
+        try:
+            node_type, room_pk = from_global_id(room_id)
+        except UnicodeDecodeError:
+            raise Exception("指定のルームは存在しません")
+
+        if node_type != str(PrivateChatroomNode):
+            raise Exception("指定のルームは存在しません")
+
+        logic.enter_private_room(request=info.context, room_id=room_pk)
+        return EnterPublicChatroom(ok=True, connection_url="websocket接続用のURLをreturnする")
 
 
 class ExitChatroom(graphene.ClientIDMutation):
@@ -220,13 +242,14 @@ class ExitChatroom(graphene.ClientIDMutation):
         
 
 class Mutation(graphene.ObjectType):
-    create_chatroom = CreateChatroom.Field()
+    create_public_chatroom = CreateChatroom.Field()
     create_private_chatroom = CreatePrivateChatroom.Field()
     invitation_user = InvitationUser.Field()
-    rename_room_name = RenameRoomName.Field()
+    rename_public_room_name = RenameRoomName.Field()
     rename_private_room_name = RenamePrivateRoomName.Field()
     delete_room = DeleteRoom().Field()
-    enter_chatroom = EnterChatroom().Field()
+    enter_public_chatroom = EnterPublicChatroom().Field()
+    enter_private_chatroom = EnterPrivateChatroom().Field()
     exit_chatroom = ExitChatroom().Field()
 
 

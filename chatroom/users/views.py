@@ -24,7 +24,7 @@ def google_auth_callback(request:HttpRequest) -> HttpResponse:
  
     try:
         Auth(request).sign_out()
-        username, user_id, email = GoogleAuth().authentication(code, generated_state, request.GET.get(key="state", default=""), request.session)
+        username, user_id, email = GoogleAuth(request).authentication(code, generated_state, request.GET.get(key="state", default=""), request.session)
         if username is None:
             return JsonResponse({"isok": False, "errors": [{"message": "authentication failed", "error_type": "auth error"}]})
 

@@ -1,23 +1,23 @@
-from django.core.exceptions import ValidationError
-from .models import UserName
 from graphql_relay import from_global_id
 from graphene_django import DjangoObjectType
 from graphene_django.filter import DjangoFilterConnectionField
 import graphene
 from graphene import relay
 
+from .models import UserName
 from .repository import MyAppUserRepository
 from .auth.my_app_auth import MyAppAuth
 from .auth.auth import Auth
 from .auth.google_auth import GoogleAuth
 from errors.graphql_error_decorator import reraise_graphql_error
+from nodes.url_safe_encode_node import UrlSafeEncodeNode
 
 
 class UserNameNode(DjangoObjectType):
     class Meta:
         model = UserName
         filter_fields  = ["id", "username", ]
-        interfaces = (relay.Node, )
+        interfaces = (UrlSafeEncodeNode, )
 
 
     email = graphene.String()
@@ -31,7 +31,7 @@ class UserNameNode(DjangoObjectType):
 
 
 class Query(graphene.ObjectType):
-    user = relay.Node.Field(UserNameNode)
+    user = UrlSafeEncodeNode.Field(UserNameNode)
     current_user = graphene.Field(UserNameNode)
     user_by_name = graphene.Field(UserNameNode, username=graphene.String(required=True))
     all_user = DjangoFilterConnectionField(UserNameNode)
@@ -61,13 +61,13 @@ class SignUp(graphene.Mutation):
     ok = graphene.Boolean()
     user = graphene.Field(UserNameNode)
 
-    @reraise_graphql_error
     @classmethod
+    @reraise_graphql_error
     def mutate(cls, root, info, username, password, email):
         user = MyAppUserRepository().create(username, password, email)
         MyAppAuth(info.context).sign_out()
         user = MyAppAuth(info.context).sign_in(email, password)
-        return SignUp(ok=True, errors=None, user=user.username)
+        return SignUp(ok=True, user=user.username)
 
 
 class SignIn(graphene.Mutation):
@@ -78,15 +78,15 @@ class SignIn(graphene.Mutation):
     ok = graphene.Boolean()
     user = graphene.Field(UserNameNode)
 
-    @reraise_graphql_error
     @classmethod
+    @reraise_graphql_error
     def mutate(cls, root, info, email, password):
         Auth(info.context).sign_out()
         user = MyAppAuth(info.context).sign_in(email, password)
         if user is None:
             raise Exception("メールアドレスまたはパスワードが異なっています")
 
-        return SignIn(ok=True, errors=None, user=user.username)
+        return SignIn(ok=True, user=user.username)
 
 
 class SignOut(graphene.Mutation):
@@ -95,8 +95,8 @@ class SignOut(graphene.Mutation):
 
     ok = graphene.Boolean()
 
-    @reraise_graphql_error
     @classmethod
+    @reraise_graphql_error
     def mutate(cls, root, info):
         Auth(info.context).sign_out()
 
@@ -110,15 +110,15 @@ class SingleSignOn(graphene.Mutation):
     ok = graphene.Boolean()
     redirect_url = graphene.String()
 
-    @reraise_graphql_error
     @classmethod
+    @reraise_graphql_error
     def mutate(cls, root, info, provider):
         if provider != "google":
             raise Exception(f"{provider}認証はサポートしていません")
         
         auth_url, state = GoogleAuth(info.context).create_auth_url()
         info.context.session["state"] = state
-        return SingleSignOn(ok=True, errors=None, redirect_url=auth_url)
+        return SingleSignOn(ok=True, redirect_url=auth_url)
 
 
 class RenameUserName(relay.ClientIDMutation):
@@ -129,8 +129,8 @@ class RenameUserName(relay.ClientIDMutation):
     ok = graphene.Boolean()
     user_name = graphene.Field(UserNameNode)
 
-    @reraise_graphql_error
     @classmethod
+    @reraise_graphql_error
     def mutate_and_get_payload(cls, root, info, new_name, id):
         try:
             nod_type, primary_id = from_global_id(id)
