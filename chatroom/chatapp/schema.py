@@ -6,7 +6,9 @@ from graphene_django import DjangoObjectType
 from graphene_django.filter import DjangoFilterConnectionField
 import django_filters
 
-from .models import Chatroom, PrivateChatroom
+from users.auth.decorator import require_sign_in
+
+from .models import AbstractChatroom, Chatroom, PrivateChatroom
 from nodes.url_safe_encode_node import UrlSafeEncodeNode
 from .logic import chatroom_interactor as logic
 from users.auth.auth import Auth
@@ -60,6 +62,14 @@ class Query(graphene.ObjectType):
     chatroom = UrlSafeEncodeNode.Field(ChatroomNode)
     all_chatrooms = DjangoFilterConnectionField(ChatroomNode)
     all_private_rooms = DjangoFilterConnectionField(PrivateChatroomNode)
+    current_user_joined_public_chatroom = DjangoFilterConnectionField(ChatroomNode)
+    current_user_joined_private_chatroom = DjangoFilterConnectionField(PrivateChatroomNode)
+
+    def resolve_current_user_joined_public_chatroom(root, info, **kwargs):
+        return Chatroom.objects.filter(chatroommember__user=Auth(info.context).current_user)
+
+    def resolve_current_user_joined_private_chatroom(root, info, **kwargs):
+        return PrivateChatroom.objects.filter(privatechatroommember__user=Auth(info.context).current_user)
 
 
 class CreateChatroom(graphene.Mutation):
