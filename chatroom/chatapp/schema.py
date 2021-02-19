@@ -61,6 +61,7 @@ class PrivateChatroomNode(DjangoObjectType):
 class Query(graphene.ObjectType):
     chatroom = UrlSafeEncodeNode.Field(ChatroomNode)
     all_chatrooms = DjangoFilterConnectionField(ChatroomNode)
+    exclude_joined_public_chatroom = DjangoFilterConnectionField(ChatroomNode)
     all_private_rooms = DjangoFilterConnectionField(PrivateChatroomNode)
     current_user_joined_public_chatroom = DjangoFilterConnectionField(ChatroomNode)
     current_user_joined_private_chatroom = DjangoFilterConnectionField(PrivateChatroomNode)
@@ -70,6 +71,9 @@ class Query(graphene.ObjectType):
 
     def resolve_current_user_joined_private_chatroom(root, info, **kwargs):
         return PrivateChatroom.objects.filter(privatechatroommember__user=Auth(info.context).current_user)
+
+    def resolve_exclude_joined_public_chatroom(root, info, **kwargs):
+        return Chatroom.objects.exclude(chatroommember__user=Auth(info.context).current_user)
 
 
 class CreateChatroom(graphene.Mutation):

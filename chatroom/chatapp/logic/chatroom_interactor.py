@@ -132,3 +132,4 @@ def exit_public_room(request: HttpRequest, room_id: str):
 
 def exit_private_room(request: HttpRequest, room_id: str):
     __exit_room(request, room_id, PrivateChatroom, PrivateChatroomMember)
+

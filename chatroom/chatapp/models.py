@@ -1,7 +1,7 @@
 from typing import Final
 
 from users.models import UserName
-from django.db import models
+from django.db import models, transaction
 
 # Create your models here.
 
@@ -16,21 +16,22 @@ class AbstractChatroom(models.Model):
 
     class Meta:
         abstract = True
-        
+
 
 class Chatroom(AbstractChatroom):
     @classmethod
     def create(cls, name: str, create_user: UserName):
-        chatroom: Chatroom = cls.objects.create(
-            room_name=name,
-            create_user=create_user
-        )
-        
-        member = ChatroomMember()
-        member.room = chatroom
-        member.user = create_user
-        member.role = MemberRoles.OWNER
-        member.save()
+        with transaction.atomic():
+            chatroom: Chatroom = cls.objects.create(
+                room_name=name,
+                create_user=create_user
+            )
+            
+            member = ChatroomMember()
+            member.room = chatroom
+            member.user = create_user
+            member.role = MemberRoles.OWNER
+            member.save()
 
         return chatroom
 
@@ -38,16 +39,17 @@ class Chatroom(AbstractChatroom):
 class PrivateChatroom(AbstractChatroom):
     @classmethod
     def create(cls, name: str, create_user: UserName):
-        chatroom: PrivateChatroom = cls.objects.create(
-            room_name=name,
-            create_user=create_user
-        )
-        
-        member = PrivateChatroomMember()
-        member.room = chatroom
-        member.user = create_user
-        member.role = MemberRoles.OWNER
-        member.save()
+        with transaction.atomic():
+            chatroom: PrivateChatroom = cls.objects.create(
+                room_name=name,
+                create_user=create_user
+            )
+            
+            member = PrivateChatroomMember()
+            member.room = chatroom
+            member.user = create_user
+            member.role = MemberRoles.OWNER
+            member.save()
 
         return chatroom
 

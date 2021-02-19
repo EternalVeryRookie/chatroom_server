@@ -1,9 +1,14 @@
+from django.db import transaction
 from .models import UserName,UserOnGoogle
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 
 
 class FailedAssignSequentialNumber(Exception):
+    """
+    連番を付与する対象のユーザー名が使用されすぎていて
+    連番に失敗したことを表す例外
+    """
     pass
 
 
@@ -55,8 +60,10 @@ class GoogleUserRepository:
         if user:
             return user
 
-        username = UserNameRepository().create_assign_sequential_number(username)
-        user = UserOnGoogle.objects.create(id=sub, email=email, username=username)
+        with transaction.atomic():
+            username = UserNameRepository().create_assign_sequential_number(username)
+            user = UserOnGoogle.objects.create(id=sub, email=email, username=username)
+
         return user
 
 

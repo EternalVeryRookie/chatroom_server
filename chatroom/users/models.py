@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.core.validators import EmailValidator
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, UserManager, PermissionsMixin
@@ -47,19 +48,18 @@ class CustomUserManager(UserManager):
         """
         if not username:
             raise ValueError('The given username must be set')
+
         email = self.normalize_email(email)
         username = self.model.normalize_username(username)
         username = UserName(username=username)
         username.full_clean()
-        username.save()
-        try:
+        with transaction.atomic():
+            username.save()
             user = self.model(username=username, email=email, **extra_fields)
             user.set_password(password)
             user.save(using=self._db)
-            return user
-        except:
-            username.delete()
-            raise
+        
+        return user
 
     def create_user(self, username, email=None, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', False)
