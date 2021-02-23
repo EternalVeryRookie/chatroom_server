@@ -137,7 +137,7 @@ class RenameUserName(relay.ClientIDMutation):
         except UnicodeDecodeError as ude:
             raise Exception(f"id「{id}」のユーザーが見つかりませんでした") from ude
 
-        if nod_type != "UserNameNode":
+        if nod_type != str(UserNameNode):
             raise Exception(f"id「{id}」のユーザーが見つかりませんでした")
 
         try:

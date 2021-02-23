@@ -1,9 +1,23 @@
 from typing import Final
 
+from django.core.exceptions import ValidationError
+
 from users.models import UserName
 from django.db import models, transaction
 
-# Create your models here.
+
+def validate_image(image: models.fields.files.ImageFieldFile):
+    LIMIT_BYTE = 5 * 1000 * 1000 #5MB
+    if image.size > LIMIT_BYTE:
+        raise ValidationError("サイズが大きすぎます")
+
+
+class UserProfile(models.Model):
+    user = models.OneToOneField(UserName, on_delete=models.CASCADE)
+    self_introduction = models.CharField(max_length=256, blank=True)
+    icon = models.ImageField(upload_to="uploads/", validators=[validate_image])
+    cover_image = models.ImageField(upload_to="uploads/", validators=[validate_image])
+
 
 class AbstractChatroom(models.Model):
     room_name = models.CharField(max_length=100)

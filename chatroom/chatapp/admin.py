@@ -2,8 +2,11 @@ from django.contrib import admin
 from django.contrib.auth.hashers import make_password
 
 from users.models import UserName
-from .models import ChatroomMember, Chatroom, ChatMessage, PrivateChatroom, PrivateChatMessage, PrivateChatroomMember
+from .models import ChatroomMember, Chatroom, ChatMessage, PrivateChatroom, PrivateChatMessage, PrivateChatroomMember, UserProfile
 
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ("user", "self_introduction", "icon", "cover_image")
 
 @admin.register(Chatroom)
 class ChatroomAdmin(admin.ModelAdmin):

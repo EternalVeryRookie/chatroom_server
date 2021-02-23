@@ -1,14 +1,20 @@
-#to do publicチャンネル用のresolverと同じものをprivateチャンネル用に実装する
+import base64
+import hashlib
+from django.db.models import base
+
+from django.db.models.fields.files import ImageFieldFile
 import graphene
+from graphene_django.fields import DjangoConnectionField
+from graphene_file_upload.scalars import Upload
 from graphene import relay
 from graphql_relay import from_global_id
 from graphene_django import DjangoObjectType
 from graphene_django.filter import DjangoFilterConnectionField
 import django_filters
 
-from users.auth.decorator import require_sign_in
+from django.db.models.fields.files import ImageFieldFile
+from .models import Chatroom, PrivateChatroom, UserProfile
 
-from .models import AbstractChatroom, Chatroom, PrivateChatroom
 from nodes.url_safe_encode_node import UrlSafeEncodeNode
 from .logic import chatroom_interactor as logic
 from users.auth.auth import Auth
@@ -58,13 +64,37 @@ class PrivateChatroomNode(DjangoObjectType):
         return queryset.filter(privatechatroommember__user=auth.current_user)
 
 
+class UserProfileNode(DjangoObjectType):
+    class Meta:
+        model = UserProfile
+        fields = "__all__"
+        interfaces = (UrlSafeEncodeNode, )
+
+    def resolve_icon(self: UserProfile, info):
+        image: ImageFieldFile = self.icon
+        names = image.name.split(".")
+        image.open(mode="rb")
+        content = image.read()
+        return f'data:image/{names[len(names)-1]};base64,{base64.b64encode(content).decode("utf-8")}'
+        
+    def resolve_cover_image(self: UserProfile, info):
+        image: ImageFieldFile = self.cover_image
+        names = image.name.split(".")
+        image.open(mode="rb")
+        content = image.read()
+        return f'data:image/{names[len(names)-1]};base64,{base64.b64encode(content).decode("utf-8")}'
+    
+
 class Query(graphene.ObjectType):
     chatroom = UrlSafeEncodeNode.Field(ChatroomNode)
+    user_profile = UrlSafeEncodeNode.Field(UserProfileNode)
     all_chatrooms = DjangoFilterConnectionField(ChatroomNode)
     exclude_joined_public_chatroom = DjangoFilterConnectionField(ChatroomNode)
     all_private_rooms = DjangoFilterConnectionField(PrivateChatroomNode)
     current_user_joined_public_chatroom = DjangoFilterConnectionField(ChatroomNode)
     current_user_joined_private_chatroom = DjangoFilterConnectionField(PrivateChatroomNode)
+    all_profiles = DjangoConnectionField(UserProfileNode)
+    current_user_profile = graphene.Field(UserProfileNode)
 
     def resolve_current_user_joined_public_chatroom(root, info, **kwargs):
         return Chatroom.objects.filter(chatroommember__user=Auth(info.context).current_user)
@@ -74,6 +104,72 @@ class Query(graphene.ObjectType):
 
     def resolve_exclude_joined_public_chatroom(root, info, **kwargs):
         return Chatroom.objects.exclude(chatroommember__user=Auth(info.context).current_user)
+
+    def resolve_current_user_profile(root, info):
+        current = Auth(info.context).current_user
+        return UserProfile.objects.get(user = current)
+
+
+class EditProfile(graphene.Mutation):
+    class Arguments:
+        self_introduction = graphene.String(required=False)
+        icon = Upload(required=False)
+        cover_image = Upload(required=False)
+
+    success = graphene.Boolean()
+
+    def mutate(self, info, **kwargs):
+        kwargs["icon"]
+        # do something with your file
+        #UserProfile.objects.create(self_introduction="テストです", icon="")
+        user = Auth(info.context).current_user
+        try:
+            profile: UserProfile = UserProfile.objects.get(user=user)
+            if "self_introduction" in kwargs:
+                profile.self_introduction = kwargs["self_introduction"]
+
+            if "icon" in kwargs:
+                profile.icon = kwargs["icon"]
+                names = profile.icon.name.split(".")
+                profile.icon.name = hashlib.md5(names[0].encode()).hexdigest() + "." + names[len(names)-1]
+
+            if "cover_image" in kwargs:
+                profile.cover_image = kwargs["cover_image"]
+                names = profile.cover_image.name.split(".")
+                profile.cover_image.name = hashlib.md5(names[0].encode()).hexdigest() + "." + names[len(names)-1]
+
+        except UserProfile.DoesNotExist:
+            profile = UserProfile(
+                user=user, 
+                self_introduction=kwargs.get("self_introduction", ""), 
+                icon=kwargs.get("icon", None), 
+                cover_image=kwargs.get("cover_image", None), 
+            )
+
+            if profile.icon:
+                names = profile.icon.name.split(".")
+                profile.icon.name = hashlib.md5(names[0].encode()).hexdigest() + "." + names[len(names)-1]
+
+            if profile.cover_image:
+                names = profile.cover_image.name.split(".")
+                profile.cover_image.name = hashlib.md5(names[0].encode()).hexdigest() + "." + names[len(names)-1]
+
+        profile.full_clean()
+        profile.save() 
+
+        return EditProfile(success=True)
+
+class UploadsMutation(graphene.Mutation):
+    class Arguments:
+        file = graphene.List(Upload) 
+
+    success = graphene.Boolean()
+
+    def mutate(self, info, file, **kwargs):
+        # do something with your file
+        #UserProfile.objects.create(self_introduction="テストです", icon="")
+        print(file)
+        return UploadsMutation(success=True)
 
 
 class CreateChatroom(graphene.Mutation):
@@ -277,6 +373,7 @@ class Mutation(graphene.ObjectType):
     enter_public_chatroom = EnterPublicChatroom().Field()
     enter_private_chatroom = EnterPrivateChatroom().Field()
     exit_chatroom = ExitChatroom().Field()
-
+    edit_profile = EditProfile().Field()
+    uploads = UploadsMutation().Field()
 
 schema = graphene.Schema(query=Query, mutation=Mutation)

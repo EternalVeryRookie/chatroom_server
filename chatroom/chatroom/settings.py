@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/3.1/ref/settings/
 
 from pathlib import Path
 import os
+import json
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -25,6 +26,14 @@ SECRET_KEY = os.environ["SERVER_SECRET_KEY"]
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ["SERVER_IS_DEBUG"] == "true"
+
+if DEBUG:
+    with open(Path(__file__).resolve().parent / "dev_setting.json") as f:
+        setting_file = json.load(f)
+else:
+    with open(Path(__file__).resolve().parent / "production_setting.json") as f:
+        setting_file = json.load(f)
+
 
 ALLOWED_HOSTS = ["django"]
 
@@ -127,7 +136,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/3.1/howto/static-files/
 
 STATIC_URL = '/static/'
-
+MEDIA_ROOT = setting_file["MEDIA_ROOT"]
+MEDIA_URL = setting_file["MEDIA_URL"]
 
 GRAPHENE = {
     'SCHEMA': 'chatroom.schema.schema',
@@ -141,7 +151,7 @@ CHANNEL_LAYERS = {
     }
 }
 
-
+"""
 CORS_ORIGIN_WHITELIST = ["http://localhost:3000", "http://localhost:8080", "http://127.0.0.1:8080"]
 
 CORS_ALLOW_HEADERS = (
@@ -152,6 +162,8 @@ CORS_ALLOW_HEADERS = (
 )
 
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = True
+"""
 
 SESSION_COOKIE_SAMESITE = "None"
 SESSION_COOKIE_SECURE = True
