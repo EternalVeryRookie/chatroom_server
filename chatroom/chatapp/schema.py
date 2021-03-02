@@ -1,8 +1,8 @@
 import base64
 import hashlib
-from django.db.models import base
 
 from django.db.models.fields.files import ImageFieldFile
+from django.db import transaction 
 import graphene
 from graphene_django.fields import DjangoConnectionField
 from graphene_file_upload.scalars import Upload
@@ -112,6 +112,7 @@ class Query(graphene.ObjectType):
 
 class EditProfile(graphene.Mutation):
     class Arguments:
+        user_name = graphene.String(required=False)
         self_introduction = graphene.String(required=False)
         icon = Upload(required=False)
         cover_image = Upload(required=False)
@@ -119,24 +120,24 @@ class EditProfile(graphene.Mutation):
     success = graphene.Boolean()
 
     def mutate(self, info, **kwargs):
-        kwargs["icon"]
-        # do something with your file
-        #UserProfile.objects.create(self_introduction="テストです", icon="")
         user = Auth(info.context).current_user
         try:
             profile: UserProfile = UserProfile.objects.get(user=user)
             if "self_introduction" in kwargs:
                 profile.self_introduction = kwargs["self_introduction"]
+                
+            if "user_name" in kwargs:
+                profile.user.username = kwargs["user_name"]
 
             if "icon" in kwargs:
-                profile.icon = kwargs["icon"]
                 names = profile.icon.name.split(".")
-                profile.icon.name = hashlib.md5(names[0].encode()).hexdigest() + "." + names[len(names)-1]
+                name = hashlib.md5(names[0].encode()).hexdigest() + "." + names[len(names)-1]
+                profile.icon.save(name, kwargs["icon"], save=False)
 
             if "cover_image" in kwargs:
-                profile.cover_image = kwargs["cover_image"]
                 names = profile.cover_image.name.split(".")
-                profile.cover_image.name = hashlib.md5(names[0].encode()).hexdigest() + "." + names[len(names)-1]
+                name = hashlib.md5(names[0].encode()).hexdigest() + "." + names[len(names)-1]
+                profile.cover_image.save(name, kwargs["cover_image"], save=False)
 
         except UserProfile.DoesNotExist:
             profile = UserProfile(
@@ -154,10 +155,15 @@ class EditProfile(graphene.Mutation):
                 names = profile.cover_image.name.split(".")
                 profile.cover_image.name = hashlib.md5(names[0].encode()).hexdigest() + "." + names[len(names)-1]
 
+
         profile.full_clean()
-        profile.save() 
+        profile.user.full_clean()
+        with transaction.atomic():
+            profile.save() 
+            profile.user.save()
 
         return EditProfile(success=True)
+
 
 class UploadsMutation(graphene.Mutation):
     class Arguments:
@@ -275,7 +281,6 @@ class RenamePrivateRoomName(relay.ClientIDMutation):
         return RenamePrivateRoomName(ok=True, chatroom=room)
 
 
-
 class DeleteRoom(relay.ClientIDMutation):
     class Input:
         id = graphene.ID()
@@ -374,6 +379,5 @@ class Mutation(graphene.ObjectType):
     enter_private_chatroom = EnterPrivateChatroom().Field()
     exit_chatroom = ExitChatroom().Field()
     edit_profile = EditProfile().Field()
-    uploads = UploadsMutation().Field()
 
 schema = graphene.Schema(query=Query, mutation=Mutation)

@@ -7,7 +7,8 @@ from django.db import models, transaction
 
 
 def validate_image(image: models.fields.files.ImageFieldFile):
-    LIMIT_BYTE = 5 * 1000 * 1000 #5MB
+    LIMIT_BYTE = 50 * 1024 * 1024 #50MB
+    print(image.width)
     if image.size > LIMIT_BYTE:
         raise ValidationError("サイズが大きすぎます")
 

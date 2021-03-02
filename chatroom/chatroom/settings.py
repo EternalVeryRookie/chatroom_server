@@ -37,6 +37,7 @@ else:
 
 ALLOWED_HOSTS = ["django"]
 
+DATA_UPLOAD_MAX_MEMORY_SIZE = None
 
 # Application definition
 

@@ -1,7 +1,6 @@
 import base64
 
 from graphene.relay import Node
-from graphql_relay.node.node import global_id_field
 
 
 class UrlSafeEncodeNode(Node):
