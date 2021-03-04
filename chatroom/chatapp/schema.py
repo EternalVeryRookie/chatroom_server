@@ -16,6 +16,7 @@ from django.db.models.fields.files import ImageFieldFile
 from .models import Chatroom, PrivateChatroom, UserProfile
 
 from users.schema import UserNameNode
+from users.models import UserName
 from nodes.url_safe_encode_node import UrlSafeEncodeNode
 from .logic import chatroom_interactor as logic
 from users.auth.auth import Auth
@@ -96,19 +97,37 @@ class Query(graphene.ObjectType):
     current_user_joined_private_chatroom = DjangoFilterConnectionField(PrivateChatroomNode)
     all_profiles = DjangoConnectionField(UserProfileNode)
     current_user_profile = graphene.Field(UserProfileNode)
+    user_profile_by_user_id = graphene.Field(UserProfileNode, id=graphene.ID())
 
     def resolve_current_user_joined_public_chatroom(root, info, **kwargs):
-        return Chatroom.objects.filter(chatroommember__user=Auth(info.context).current_user)
+        return Chatroom.objects.filter(chatroommember__user=Auth(info.context).current_user, chatroommember__is_enter=True)
 
     def resolve_current_user_joined_private_chatroom(root, info, **kwargs):
-        return PrivateChatroom.objects.filter(privatechatroommember__user=Auth(info.context).current_user)
+        return PrivateChatroom.objects.filter(privatechatroommember__user=Auth(info.context).current_user, privatechatroommember__is_enter=True)
 
     def resolve_exclude_joined_public_chatroom(root, info, **kwargs):
-        return Chatroom.objects.exclude(chatroommember__user=Auth(info.context).current_user)
+        return Chatroom.objects.exclude(chatroommember__user=Auth(info.context).current_user, chatroommember__is_enter=True)
 
     def resolve_current_user_profile(root, info):
         current = Auth(info.context).current_user
-        return UserProfile.objects.get(user = current)
+        try:
+            return UserProfile.objects.get(user = current)
+        except:
+            return UserProfile.objects.create(user=current)
+
+    def resolve_user_profile_by_user_id(root, info, id):
+        try:
+            node_type, user_pk = from_global_id(id)
+        except UnicodeDecodeError:
+            raise Exception("指定のユーザーは存在しません")
+    
+        if node_type != str(UserNameNode):
+            raise Exception("指定のユーザーは存在しません")
+
+        try:
+            return UserProfile.objects.get(user__pk=user_pk)
+        except UserProfile.DoesNotExist:
+            return UserProfile.objects.create(user=UserName.objects.get(pk=user_pk))
 
 
 class EditProfile(graphene.Mutation):
@@ -118,27 +137,40 @@ class EditProfile(graphene.Mutation):
         icon = Upload(required=False)
         cover_image = Upload(required=False)
 
-    success = graphene.Boolean()
+    ok = graphene.Boolean()
 
     def mutate(self, info, **kwargs):
         user = Auth(info.context).current_user
         try:
             profile: UserProfile = UserProfile.objects.get(user=user)
+            oldIconPath, oldCoverImagePath = None, None
             if "self_introduction" in kwargs:
                 profile.self_introduction = kwargs["self_introduction"]
                 
             if "user_name" in kwargs:
                 profile.user.username = kwargs["user_name"]
+                profile.user.full_clean()
+                profile.user.save()
 
             if "icon" in kwargs:
+                oldIconPath = profile.icon.name
                 names = profile.icon.name.split(".")
                 name = hashlib.md5(names[0].encode()).hexdigest() + "." + names[len(names)-1]
                 profile.icon.save(name, kwargs["icon"], save=False)
 
             if "cover_image" in kwargs:
+                oldCoverImagePath = profile.cover_image.name
                 names = profile.cover_image.name.split(".")
                 name = hashlib.md5(names[0].encode()).hexdigest() + "." + names[len(names)-1]
                 profile.cover_image.save(name, kwargs["cover_image"], save=False)
+            
+            profile.full_clean()
+            profile.save()
+            if oldCoverImagePath and oldCoverImagePath != UserProfile.DEFAULT_COVER_IMAGE_NAME:
+                profile.icon.storage.delete(oldCoverImagePath)
+
+            if oldIconPath and oldIconPath != UserProfile.DEFAULT_ICON_NAME:
+                profile.icon.storage.delete(oldIconPath)
 
         except UserProfile.DoesNotExist:
             profile = UserProfile(
@@ -148,6 +180,11 @@ class EditProfile(graphene.Mutation):
                 cover_image=kwargs.get("cover_image", None), 
             )
 
+            if "user_name" in kwargs:
+                profile.user.username = kwargs["user_name"]
+                profile.user.full_clean()
+                profile.user.save()
+
             if profile.icon:
                 names = profile.icon.name.split(".")
                 profile.icon.name = hashlib.md5(names[0].encode()).hexdigest() + "." + names[len(names)-1]
@@ -156,14 +193,10 @@ class EditProfile(graphene.Mutation):
                 names = profile.cover_image.name.split(".")
                 profile.cover_image.name = hashlib.md5(names[0].encode()).hexdigest() + "." + names[len(names)-1]
 
-
-        profile.full_clean()
-        profile.user.full_clean()
-        with transaction.atomic():
+            profile.full_clean()
             profile.save() 
-            profile.user.save()
 
-        return EditProfile(success=True)
+        return EditProfile(ok=True)
 
 
 class CreateChatroom(graphene.Mutation):
@@ -271,7 +304,7 @@ class RenamePrivateRoomName(graphene.Mutation):
         return RenamePrivateRoomName(ok=True, chatroom=room)
 
 
-class DeleteRoom(graphene.Mutation):
+class DeletePublicRoom(graphene.Mutation):
     class Arguments:
         id = graphene.ID()
 
@@ -290,7 +323,29 @@ class DeleteRoom(graphene.Mutation):
 
         logic.disable_public_room(request=info.context, room_id=primary_id)
 
-        return DeleteRoom(ok=True)
+        return DeletePublicRoom(ok=True)
+
+
+class DeletePrivateRoom(graphene.Mutation):
+    class Arguments:
+        id = graphene.ID()
+
+    ok = graphene.Boolean()
+
+    @classmethod
+    @reraise_graphql_error
+    def mutate(cls, root, info, id):
+        try:
+            node_type, primary_id = from_global_id(id)
+        except UnicodeDecodeError as ude:
+            raise Exception(f"id「{id}」のルームが見つかりませんでした") from ude
+
+        if node_type != str(PrivateChatroomNode):
+            raise Exception(f"id「{id}」のルームが見つかりませんでした")
+
+        logic.disable_private_room(request=info.context, room_id=primary_id)
+
+        return DeletePrivateRoom(ok=True)
 
 
 class EnterPublicChatroom(graphene.Mutation):
@@ -351,10 +406,13 @@ class ExitChatroom(graphene.Mutation):
         except UnicodeDecodeError as ude:
             raise Exception("指定のルームは存在しません") from ude
 
-        if node_type != "ChatroomNode":
+        if node_type == str(ChatroomNode):
+            logic.exit_public_room(request=info.context, room_id=room_pk)
+        elif node_type == str(PrivateChatroomNode):
+            logic.exit_private_room(request=info.context, room_id=room_pk)
+        else :
             raise Exception("指定のルームは存在しません")
 
-        logic.exit_public_room(request=info.context, room_id=room_pk)
         return ExitChatroom(ok=True)
         
 
@@ -364,7 +422,8 @@ class Mutation(graphene.ObjectType):
     invitation_user = InvitationUser.Field()
     rename_public_room_name = RenamePublicRoomName.Field()
     rename_private_room_name = RenamePrivateRoomName.Field()
-    delete_room = DeleteRoom().Field()
+    delete_public_room = DeletePublicRoom().Field()
+    delete_private_room = DeletePrivateRoom().Field()
     enter_public_chatroom = EnterPublicChatroom().Field()
     enter_private_chatroom = EnterPrivateChatroom().Field()
     exit_chatroom = ExitChatroom().Field()

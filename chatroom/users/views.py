@@ -9,7 +9,7 @@ from .auth.google_auth import GoogleAuth
 from .auth.auth import Auth
 
 
-OAUTH_REDIRECT_URL: Final[str] = "http://127.0.0.1:8080"
+OAUTH_REDIRECT_URL: Final[str] = "https://localhost:8000"
 
 @require_GET
 def google_auth_callback(request:HttpRequest) -> HttpResponse:

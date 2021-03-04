@@ -123,6 +123,7 @@ def __exit_room(request: HttpRequest, room_id: str, room_type: Type[AbstractChat
     room = room_type.objects.get(pk=room_id)
     user = Auth(request).current_user
     member_query = member_type.objects.filter(user=user, room=room)
+
     if len(member_query) > 0:
         member_query[0].is_enter =  False
         member_query[0].save()

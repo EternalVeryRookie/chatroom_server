@@ -14,10 +14,13 @@ def validate_image(image: models.fields.files.ImageFieldFile):
 
 
 class UserProfile(models.Model):
+    DEFAULT_ICON_NAME: Final[str] = "uploads/DefaultIconImage.png"
+    DEFAULT_COVER_IMAGE_NAME: Final[str] = "uploads/DefaultCoverImage.png"
+
     user = models.OneToOneField(UserName, on_delete=models.CASCADE)
     self_introduction = models.CharField(max_length=256, blank=True)
-    icon = models.ImageField(upload_to="uploads/", validators=[validate_image])
-    cover_image = models.ImageField(upload_to="uploads/", validators=[validate_image])
+    icon = models.ImageField(upload_to="uploads/", validators=[validate_image], default=DEFAULT_ICON_NAME)
+    cover_image = models.ImageField(upload_to="uploads/", validators=[validate_image], default=DEFAULT_COVER_IMAGE_NAME)
 
 
 class AbstractChatroom(models.Model):
