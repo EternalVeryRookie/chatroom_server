@@ -15,6 +15,7 @@ import django_filters
 from django.db.models.fields.files import ImageFieldFile
 from .models import Chatroom, PrivateChatroom, UserProfile
 
+from users.schema import UserNameNode
 from nodes.url_safe_encode_node import UrlSafeEncodeNode
 from .logic import chatroom_interactor as logic
 from users.auth.auth import Auth
@@ -165,29 +166,17 @@ class EditProfile(graphene.Mutation):
         return EditProfile(success=True)
 
 
-class UploadsMutation(graphene.Mutation):
-    class Arguments:
-        file = graphene.List(Upload) 
-
-    success = graphene.Boolean()
-
-    def mutate(self, info, file, **kwargs):
-        # do something with your file
-        #UserProfile.objects.create(self_introduction="テストです", icon="")
-        print(file)
-        return UploadsMutation(success=True)
-
-
 class CreateChatroom(graphene.Mutation):
     class Arguments:
         name = graphene.String()
+        description = graphene.String()
 
     ok = graphene.Boolean()
     chatroom = graphene.Field(ChatroomNode)
 
     @classmethod
     @reraise_graphql_error
-    def mutate(cls, root, info, name:str):
+    def mutate(cls, root, info, name:str, description:str):
         room = logic.create_public_chatroom(info.context, name)
 
         return CreateChatroom(ok=True, chatroom=room)
@@ -196,13 +185,14 @@ class CreateChatroom(graphene.Mutation):
 class CreatePrivateChatroom(graphene.Mutation):
     class Arguments:
         name = graphene.String()
+        description = graphene.String()
 
     ok = graphene.Boolean()
     chatroom = graphene.Field(PrivateChatroomNode)
 
     @classmethod
     @reraise_graphql_error
-    def mutate(cls, root, info, name:str):
+    def mutate(cls, root, info, name:str, description:str):
         room = logic.create_private_chatroom(info.context, name)
 
         return CreatePrivateChatroom(ok=True, chatroom=room)
@@ -220,13 +210,13 @@ class InvitationUser(relay.ClientIDMutation):
     @reraise_graphql_error
     def mutate_and_get_payload(cls, root, info, users, room):
         node_type, private_room_id = from_global_id(room)
-        if node_type != "PrivateChatroomNode":
+        if node_type != str(PrivateChatroomNode):
             raise Exception("指定のルームは存在しません")
         
         target_user_ids = [None] * len(users)
         for i, user_id in enumerate(users):
             node_type, primary_id = from_global_id(user_id)
-            if node_type != "UserNameNode":
+            if node_type != str(UserNameNode):
                 raise Exception(f"指定のユーザー「{user_id}」は存在しません")
             
             target_user_ids[i] = primary_id
@@ -235,7 +225,7 @@ class InvitationUser(relay.ClientIDMutation):
         return InvitationUser(ok=True)
 
 
-class RenameRoomName(relay.ClientIDMutation):
+class RenamePublicRoomName(relay.ClientIDMutation):
     class Input:
         new_name = graphene.String()
         id = graphene.ID()
@@ -255,7 +245,7 @@ class RenameRoomName(relay.ClientIDMutation):
             raise Exception(f"id「{id}」のルームが見つかりませんでした")
 
         room = logic.rename_public_room(info.context, primary_id, new_name)
-        return RenameRoomName(ok=True, chatroom=room)
+        return RenamePublicRoomName(ok=True, chatroom=room)
 
 
 class RenamePrivateRoomName(relay.ClientIDMutation):
@@ -372,7 +362,7 @@ class Mutation(graphene.ObjectType):
     create_public_chatroom = CreateChatroom.Field()
     create_private_chatroom = CreatePrivateChatroom.Field()
     invitation_user = InvitationUser.Field()
-    rename_public_room_name = RenameRoomName.Field()
+    rename_public_room_name = RenamePublicRoomName.Field()
     rename_private_room_name = RenamePrivateRoomName.Field()
     delete_room = DeleteRoom().Field()
     enter_public_chatroom = EnterPublicChatroom().Field()

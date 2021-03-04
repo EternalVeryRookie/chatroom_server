@@ -98,6 +98,7 @@ def rename_private_room(request: HttpRequest, room_id: str, new_name: str) -> Pr
 
 
 #todo ここでwebsocket通信を確立する
+@require_sign_in
 def __enter_room(request: HttpRequest, room_id: str, room_type: Type[AbstractChatroom], member_type: Type[AbstractChatroomMember]) -> None:
     room = room_type.objects.get(pk=room_id)
     user = Auth(request).current_user
@@ -117,6 +118,7 @@ def enter_private_room(request: HttpRequest, room_id: str):
     __enter_room(request, room_id, PrivateChatroom, PrivateChatroomMember)
 
 
+@require_sign_in
 def __exit_room(request: HttpRequest, room_id: str, room_type: Type[AbstractChatroom], member_type: Type[AbstractChatroomMember]) -> None:
     room = room_type.objects.get(pk=room_id)
     user = Auth(request).current_user

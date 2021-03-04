@@ -8,12 +8,12 @@ from django.utils import timezone
 
 class UserName(models.Model):
     username = models.CharField(
-        max_length=150,
+        max_length=30,
         validators=[UnicodeUsernameValidator(message="ユーザー名に使用できるの記号は@/./+/-/_のみです")],
         unique=True,
         error_messages={
             "unique": "そのユーザー名は既に使用されています",
-            "max_length": "ユーザー名の文字数の上限は150です"
+            "max_length": "ユーザー名の文字数の上限は30です"
         }
     )
 
