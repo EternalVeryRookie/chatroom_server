@@ -199,8 +199,8 @@ class CreatePrivateChatroom(graphene.Mutation):
 
 
 #todo publicルームにも招待機能を追加する
-class InvitationUser(relay.ClientIDMutation):
-    class Input:
+class InvitationUser(graphene.Mutation):
+    class Arguments:
         users = graphene.List(graphene.ID)
         room = graphene.ID()
 
@@ -208,7 +208,7 @@ class InvitationUser(relay.ClientIDMutation):
 
     @classmethod
     @reraise_graphql_error
-    def mutate_and_get_payload(cls, root, info, users, room):
+    def mutate(cls, root, info, users, room):
         node_type, private_room_id = from_global_id(room)
         if node_type != str(PrivateChatroomNode):
             raise Exception("指定のルームは存在しません")
@@ -225,8 +225,8 @@ class InvitationUser(relay.ClientIDMutation):
         return InvitationUser(ok=True)
 
 
-class RenamePublicRoomName(relay.ClientIDMutation):
-    class Input:
+class RenamePublicRoomName(graphene.Mutation):
+    class Arguments:
         new_name = graphene.String()
         id = graphene.ID()
 
@@ -235,7 +235,7 @@ class RenamePublicRoomName(relay.ClientIDMutation):
 
     @classmethod
     @reraise_graphql_error
-    def mutate_and_get_payload(cls, root, info, new_name, id):
+    def mutate(cls, root, info, new_name, id):
         try:
             node_type, primary_id = from_global_id(id)
         except UnicodeDecodeError as ude:
@@ -248,8 +248,8 @@ class RenamePublicRoomName(relay.ClientIDMutation):
         return RenamePublicRoomName(ok=True, chatroom=room)
 
 
-class RenamePrivateRoomName(relay.ClientIDMutation):
-    class Input:
+class RenamePrivateRoomName(graphene.Mutation):
+    class Arguments:
         new_name = graphene.String()
         id = graphene.ID()
 
@@ -258,7 +258,7 @@ class RenamePrivateRoomName(relay.ClientIDMutation):
 
     @classmethod
     @reraise_graphql_error
-    def mutate_and_get_payload(cls, root, info, new_name, id):
+    def mutate(cls, root, info, new_name, id):
         try:
             node_type, primary_id = from_global_id(id)
         except UnicodeDecodeError as ude:
@@ -271,15 +271,15 @@ class RenamePrivateRoomName(relay.ClientIDMutation):
         return RenamePrivateRoomName(ok=True, chatroom=room)
 
 
-class DeleteRoom(relay.ClientIDMutation):
-    class Input:
+class DeleteRoom(graphene.Mutation):
+    class Arguments:
         id = graphene.ID()
 
     ok = graphene.Boolean()
 
     @classmethod
     @reraise_graphql_error
-    def mutate_and_get_payload(cls, root, info, id):
+    def mutate(cls, root, info, id):
         try:
             node_type, primary_id = from_global_id(id)
         except UnicodeDecodeError as ude:
@@ -293,8 +293,8 @@ class DeleteRoom(relay.ClientIDMutation):
         return DeleteRoom(ok=True)
 
 
-class EnterPublicChatroom(graphene.ClientIDMutation):
-    class Input:
+class EnterPublicChatroom(graphene.Mutation):
+    class Arguments:
         room_id = graphene.ID()
 
     ok = graphene.Boolean()
@@ -302,7 +302,7 @@ class EnterPublicChatroom(graphene.ClientIDMutation):
     
     @classmethod
     @reraise_graphql_error
-    def mutate_and_get_payload(cls, root, info, room_id):
+    def mutate(cls, root, info, room_id):
         try:
             node_type, room_pk = from_global_id(room_id)
         except UnicodeDecodeError:
@@ -315,8 +315,8 @@ class EnterPublicChatroom(graphene.ClientIDMutation):
         return EnterPublicChatroom(ok=True, connection_url="websocket接続用のURLをreturnする")
 
 
-class EnterPrivateChatroom(graphene.ClientIDMutation):
-    class Input:
+class EnterPrivateChatroom(graphene.Mutation):
+    class Arguments:
         room_id = graphene.ID()
 
     ok = graphene.Boolean()
@@ -324,7 +324,7 @@ class EnterPrivateChatroom(graphene.ClientIDMutation):
     
     @classmethod
     @reraise_graphql_error
-    def mutate_and_get_payload(cls, root, info, room_id):
+    def mutate(cls, root, info, room_id):
         try:
             node_type, room_pk = from_global_id(room_id)
         except UnicodeDecodeError:
@@ -337,15 +337,15 @@ class EnterPrivateChatroom(graphene.ClientIDMutation):
         return EnterPublicChatroom(ok=True, connection_url="websocket接続用のURLをreturnする")
 
 
-class ExitChatroom(graphene.ClientIDMutation):
-    class Input:
+class ExitChatroom(graphene.Mutation):
+    class Arguments:
         room_id = graphene.ID()
 
     ok = graphene.Boolean()
     
     @classmethod
     @reraise_graphql_error
-    def mutate_and_get_payload(cls, root, info, room_id):
+    def mutate(cls, root, info, room_id):
         try:
             node_type, room_pk = from_global_id(room_id)
         except UnicodeDecodeError as ude:

@@ -121,8 +121,8 @@ class SingleSignOn(graphene.Mutation):
         return SingleSignOn(ok=True, redirect_url=auth_url)
 
 
-class RenameUserName(relay.ClientIDMutation):
-    class Input:
+class RenameUserName(graphene.Mutation):
+    class Arguments:
         new_name = graphene.String()
         id = graphene.ID()
 
@@ -131,7 +131,7 @@ class RenameUserName(relay.ClientIDMutation):
 
     @classmethod
     @reraise_graphql_error
-    def mutate_and_get_payload(cls, root, info, new_name, id):
+    def mutate(cls, root, info, new_name, id):
         try:
             nod_type, primary_id = from_global_id(id)
         except UnicodeDecodeError as ude:
