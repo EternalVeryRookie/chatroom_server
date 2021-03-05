@@ -1,16 +1,9 @@
 from typing import Final
 
-from django.core.exceptions import ValidationError
+from validators.image import MaxFileSizeValidator, ImageAspectRatioValidator, WidthHeight
 
 from users.models import UserName
 from django.db import models, transaction
-
-
-def validate_image(image: models.fields.files.ImageFieldFile):
-    LIMIT_BYTE = 50 * 1024 * 1024 #50MB
-    print(image.width)
-    if image.size > LIMIT_BYTE:
-        raise ValidationError("サイズが大きすぎます")
 
 
 class UserProfile(models.Model):
@@ -19,8 +12,23 @@ class UserProfile(models.Model):
 
     user = models.OneToOneField(UserName, on_delete=models.CASCADE)
     self_introduction = models.CharField(max_length=256, blank=True)
-    icon = models.ImageField(upload_to="uploads/", validators=[validate_image], default=DEFAULT_ICON_NAME)
-    cover_image = models.ImageField(upload_to="uploads/", validators=[validate_image], default=DEFAULT_COVER_IMAGE_NAME)
+    LIMIT_BYTE: Final[int] = 50 * 1024 * 1024
+    icon = models.ImageField(
+        upload_to="uploads/", 
+        validators=[
+            MaxFileSizeValidator(LIMIT_BYTE),
+            ImageAspectRatioValidator(WidthHeight(1, 1))
+            ], 
+        default=DEFAULT_ICON_NAME
+    )
+    cover_image = models.ImageField(
+        upload_to="uploads/", 
+        validators=[
+            MaxFileSizeValidator(LIMIT_BYTE),
+            ImageAspectRatioValidator(WidthHeight(width=3, height=1))
+        ], 
+        default=DEFAULT_COVER_IMAGE_NAME
+    )
 
 
 class AbstractChatroom(models.Model):

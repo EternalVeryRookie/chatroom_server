@@ -1,5 +1,6 @@
 import base64
 import hashlib
+from django.core.files.images import ImageFile
 
 from django.db.models.fields.files import ImageFieldFile
 from django.db import transaction 
@@ -152,17 +153,24 @@ class EditProfile(graphene.Mutation):
                 profile.user.full_clean()
                 profile.user.save()
 
+            def save_filename(name, content_type):
+                names = name.split(".")
+                if len(names) > 1:
+                    return hashlib.md5(names[0].encode()).hexdigest() + "." + names[len(names)-1]
+
+                names = content_type.split("/")
+                if len(names) > 1:
+                    return hashlib.md5(name.encode()).hexdigest() + "." + names[1]
+
             if "icon" in kwargs:
                 oldIconPath = profile.icon.name
-                names = profile.icon.name.split(".")
-                name = hashlib.md5(names[0].encode()).hexdigest() + "." + names[len(names)-1]
-                profile.icon.save(name, kwargs["icon"], save=False)
+                name = save_filename(kwargs["icon"].name, kwargs["icon"].content_type)
+                profile.icon = ImageFile(name=name, file=kwargs["icon"])
 
             if "cover_image" in kwargs:
                 oldCoverImagePath = profile.cover_image.name
-                names = profile.cover_image.name.split(".")
-                name = hashlib.md5(names[0].encode()).hexdigest() + "." + names[len(names)-1]
-                profile.cover_image.save(name, kwargs["cover_image"], save=False)
+                name = save_filename(kwargs["cover_image"].name, kwargs["cover_image"].content_type)
+                profile.cover_image = ImageFile(name=name, file=kwargs["cover_image"])
             
             profile.full_clean()
             profile.save()
