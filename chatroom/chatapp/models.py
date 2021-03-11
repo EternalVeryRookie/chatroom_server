@@ -32,7 +32,7 @@ class UserProfile(models.Model):
 
 
 class AbstractChatroom(models.Model):
-    room_name = models.CharField(max_length=100)
+    room_name = models.CharField(max_length=64)
     description = models.CharField(max_length=256, null=False, blank=True, default="")
     create_date = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)

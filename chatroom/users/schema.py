@@ -2,10 +2,9 @@ from graphql_relay import from_global_id
 from graphene_django import DjangoObjectType
 from graphene_django.filter import DjangoFilterConnectionField
 import graphene
-from graphene import relay
+from django.contrib.auth import get_user_model
 
 from .models import UserName
-from .repository import MyAppUserRepository
 from .auth.my_app_auth import MyAppAuth
 from .auth.auth import Auth
 from .auth.google_auth import GoogleAuth
@@ -19,9 +18,7 @@ class UserNameNode(DjangoObjectType):
         filter_fields  = ["id", "username", ]
         interfaces = (UrlSafeEncodeNode, )
 
-
     email = graphene.String()
-
 
     def resolve_email(self, info):
         if Auth(info.context).is_same_user(self):
@@ -36,17 +33,14 @@ class Query(graphene.ObjectType):
     user_by_name = graphene.Field(UserNameNode, username=graphene.String(required=True))
     all_user = DjangoFilterConnectionField(UserNameNode)
 
-
     def resolve_user_by_name(root, info, username):
         try:
             return UserName.objects.get(username=username)
         except UserName.DoesNotExist:
             return None
 
-
     def resolve_current_user(root, info):
         return Auth(info.context).current_user
-
 
     def resolve_all_user(root, info):
         return UserName.objects.all()
@@ -64,7 +58,7 @@ class SignUp(graphene.Mutation):
     @classmethod
     @reraise_graphql_error
     def mutate(cls, root, info, username, password, email):
-        user = MyAppUserRepository().create(username, password, email)
+        get_user_model().objects.create_user(username=username, password=password, email=email)
         MyAppAuth(info.context).sign_out()
         user = MyAppAuth(info.context).sign_in(email, password)
         return SignUp(ok=True, user=user.username)

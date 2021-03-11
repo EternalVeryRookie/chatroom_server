@@ -26,8 +26,8 @@ class WidthHeight:
 
 @deconstructible
 class ImageAspectRatioValidator(BaseValidator):
-    message = f""
-    code = ""
+    message = f"画像の縦横比が異なります"
+    code = "aspect_ratio"
 
     def compare(self, a: WidthHeight, b: WidthHeight) -> bool:
         """

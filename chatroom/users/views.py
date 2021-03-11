@@ -4,7 +4,8 @@ from django.http.response import HttpResponse, HttpResponseRedirect, JsonRespons
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
-from .repository import GoogleUserRepository
+from users.models import UserOnGoogle
+
 from .auth.google_auth import GoogleAuth
 from .auth.auth import Auth
 
@@ -28,7 +29,7 @@ def google_auth_callback(request:HttpRequest) -> HttpResponse:
         if username is None:
             return JsonResponse({"isok": False, "errors": [{"message": "authentication failed", "error_type": "auth error"}]})
 
-        user = GoogleUserRepository().create(username, user_id, email)
+        user = UserOnGoogle.objects.get_or_create(username=username, sub=user_id, email=email)
         user.last_login = timezone.now()
         user.save()
         request.session.save()

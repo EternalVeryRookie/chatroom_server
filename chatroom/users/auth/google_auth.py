@@ -6,7 +6,6 @@ from typing import NoReturn
 import google_auth_oauthlib.flow
 from django.http.request import HttpRequest
 
-from ..repository import GoogleUserRepository
 from ..models import UserOnGoogle
 
 
@@ -73,7 +72,10 @@ class GoogleAuth:
         if self.user_id is None:
             return None
 
-        return GoogleUserRepository().find(self.user_id)
+        try:
+            return UserOnGoogle.objects.get(id=self.user_id)
+        except UserOnGoogle.DoesNotExist:
+            return None
 
 
     @property

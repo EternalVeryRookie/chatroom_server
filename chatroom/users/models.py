@@ -1,9 +1,47 @@
+import typing
+
 from django.db import transaction
 from django.core.validators import EmailValidator
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, UserManager, PermissionsMixin
 from django.contrib.auth.validators import UnicodeUsernameValidator, ASCIIUsernameValidator
 from django.utils import timezone
+from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+
+class FailedAssignSequentialNumber(Exception):
+    """
+    連番を付与する対象のユーザー名が使用されすぎていて
+    連番に失敗したことを表す例外
+    """
+
+
+class UserNameQuerySet(models.QuerySet):
+    def create_assign_sequential_number(self, username):
+        """
+        与えられたusernameに対して連番を付与することでユーザー名の重複をなくす
+        重複をなくした上でユーザー名を登録する
+        """
+
+        for i in range(200000):
+            tmp_name = username
+            try:
+                name = UserName(username=get_user_model().normalize_username(tmp_name))
+                name.full_clean()
+                name.save()
+                return name
+            except ValidationError:
+                tmp_name = username + str(i)
+                i+=1
+
+        raise FailedAssignSequentialNumber("連番の付与に失敗しました。ユーザー名%sは使用されすぎています" % username)
+
+
+    def create(self, **kwargs):
+        username: UserName = get_user_model().normalize_username(kwargs["username"])
+        username.full_clean()
+        username.save()
+        return username
 
 
 class UserName(models.Model):
@@ -16,6 +54,8 @@ class UserName(models.Model):
             "max_length": "ユーザー名の文字数の上限は30です"
         }
     )
+
+    objects = UserNameQuerySet.as_manager()
 
     def __str__(self):
         return self.username
@@ -58,12 +98,13 @@ class CustomUserManager(UserManager):
             user = self.model(username=username, email=email, **extra_fields)
             user.set_password(password)
             user.save(using=self._db)
-        
+
         return user
 
     def create_user(self, username, email=None, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', False)
         extra_fields.setdefault('is_superuser', False)
+        
         return self._create_user(username, email, password, **extra_fields)
 
     def create_superuser(self, username=None, email=None, password=None, **extra_fields):
@@ -112,6 +153,12 @@ class UserOnMyApp(AbstractBaseUser, PermissionsMixin):
 
 
 class UserOnGoogle(models.Model):
+    class UserOnGoogleQuerySet(models.QuerySet):
+        def create(self, **kwargs):
+            with transaction.atomic():
+                UserName.objects.create_assign_sequential_number(kwargs["username"])
+                return self.create(id=kwargs["sub"], email=kwargs["email"], username=kwargs["username"])
+
     #id tokenのsub属性を利用する。Googleのサービスで一意の識別子で変更されない
     #参考　https://developers.google.com/identity/protocols/oauth2/openid-connect#createxsrftoken
     id = models.CharField(
@@ -142,6 +189,7 @@ class UserOnGoogle(models.Model):
     date_joined = models.DateTimeField(('date joined'), default=timezone.now)
     last_login = models.DateTimeField(('last login'), blank=True, null=True)
 
+    objects = UserOnGoogleQuerySet.as_manager()
 
     @property
     def name(self):
