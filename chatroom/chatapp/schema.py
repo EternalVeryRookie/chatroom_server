@@ -1,27 +1,17 @@
-import base64
-import hashlib
-from django.core.files.images import ImageFile
-
-from django.db.models.fields.files import ImageFieldFile
-from django.db import transaction 
 import graphene
-from graphene_django.fields import DjangoConnectionField
-from graphene_file_upload.scalars import Upload
-from graphene import relay
 from graphql_relay import from_global_id
 from graphene_django import DjangoObjectType
 from graphene_django.filter import DjangoFilterConnectionField
 import django_filters
 
-from django.db.models.fields.files import ImageFieldFile
-from .models import Chatroom, PrivateChatroom, UserProfile
+from .models import Chatroom, PrivateChatroom
 
 from users.schema import UserNameNode
 from users.models import UserName
-from nodes.url_safe_encode_node import UrlSafeEncodeNode
+from common.nodes.url_safe_encode_node import UrlSafeEncodeNode
 from .logic import chatroom_interactor as logic
 from users.auth.auth import Auth
-from errors.graphql_error_decorator import reraise_graphql_error
+from common.errors.graphql_error_decorator import reraise_graphql_error
 
 
 class ChatroomFilter(django_filters.FilterSet):
@@ -67,38 +57,13 @@ class PrivateChatroomNode(DjangoObjectType):
         return queryset.filter(privatechatroommember__user=auth.current_user)
 
 
-class UserProfileNode(DjangoObjectType):
-    class Meta:
-        model = UserProfile
-        fields = "__all__"
-        interfaces = (UrlSafeEncodeNode, )
-
-    def resolve_icon(self: UserProfile, info):
-        image: ImageFieldFile = self.icon
-        names = image.name.split(".")
-        image.open(mode="rb")
-        content = image.read()
-        return f'data:image/{names[len(names)-1]};base64,{base64.b64encode(content).decode("utf-8")}'
-        
-    def resolve_cover_image(self: UserProfile, info):
-        image: ImageFieldFile = self.cover_image
-        names = image.name.split(".")
-        image.open(mode="rb")
-        content = image.read()
-        return f'data:image/{names[len(names)-1]};base64,{base64.b64encode(content).decode("utf-8")}'
-    
-
 class Query(graphene.ObjectType):
     chatroom = UrlSafeEncodeNode.Field(ChatroomNode)
-    user_profile = UrlSafeEncodeNode.Field(UserProfileNode)
     all_chatrooms = DjangoFilterConnectionField(ChatroomNode)
     exclude_joined_public_chatroom = DjangoFilterConnectionField(ChatroomNode)
     all_private_rooms = DjangoFilterConnectionField(PrivateChatroomNode)
     current_user_joined_public_chatroom = DjangoFilterConnectionField(ChatroomNode)
     current_user_joined_private_chatroom = DjangoFilterConnectionField(PrivateChatroomNode)
-    all_profiles = DjangoConnectionField(UserProfileNode)
-    current_user_profile = graphene.Field(UserProfileNode)
-    user_profile_by_user_id = graphene.Field(UserProfileNode, id=graphene.ID())
 
     def resolve_current_user_joined_public_chatroom(root, info, **kwargs):
         return Chatroom.objects.filter(chatroommember__user=Auth(info.context).current_user, chatroommember__is_enter=True)
@@ -108,103 +73,6 @@ class Query(graphene.ObjectType):
 
     def resolve_exclude_joined_public_chatroom(root, info, **kwargs):
         return Chatroom.objects.exclude(chatroommember__user=Auth(info.context).current_user, chatroommember__is_enter=True)
-
-    def resolve_current_user_profile(root, info):
-        current = Auth(info.context).current_user
-        try:
-            return UserProfile.objects.get(user = current)
-        except:
-            return UserProfile.objects.create(user=current)
-
-    def resolve_user_profile_by_user_id(root, info, id):
-        try:
-            node_type, user_pk = from_global_id(id)
-        except UnicodeDecodeError:
-            raise Exception("指定のユーザーは存在しません")
-    
-        if node_type != str(UserNameNode):
-            raise Exception("指定のユーザーは存在しません")
-
-        try:
-            return UserProfile.objects.get(user__pk=user_pk)
-        except UserProfile.DoesNotExist:
-            return UserProfile.objects.create(user=UserName.objects.get(pk=user_pk))
-
-
-class EditProfile(graphene.Mutation):
-    class Arguments:
-        user_name = graphene.String(required=False)
-        self_introduction = graphene.String(required=False)
-        icon = Upload(required=False)
-        cover_image = Upload(required=False)
-
-    ok = graphene.Boolean()
-
-    def mutate(self, info, **kwargs):
-        user = Auth(info.context).current_user
-        try:
-            profile: UserProfile = UserProfile.objects.get(user=user)
-            oldIconPath, oldCoverImagePath = None, None
-            if "self_introduction" in kwargs:
-                profile.self_introduction = kwargs["self_introduction"]
-                
-            if "user_name" in kwargs:
-                profile.user.username = kwargs["user_name"]
-                profile.user.full_clean()
-                profile.user.save()
-
-            def save_filename(name, content_type):
-                names = name.split(".")
-                if len(names) > 1:
-                    return hashlib.md5(names[0].encode()).hexdigest() + "." + names[len(names)-1]
-
-                names = content_type.split("/")
-                if len(names) > 1:
-                    return hashlib.md5(name.encode()).hexdigest() + "." + names[1]
-
-            if "icon" in kwargs:
-                oldIconPath = profile.icon.name
-                name = save_filename(kwargs["icon"].name, kwargs["icon"].content_type)
-                profile.icon = ImageFile(name=name, file=kwargs["icon"])
-
-            if "cover_image" in kwargs:
-                oldCoverImagePath = profile.cover_image.name
-                name = save_filename(kwargs["cover_image"].name, kwargs["cover_image"].content_type)
-                profile.cover_image = ImageFile(name=name, file=kwargs["cover_image"])
-            
-            profile.full_clean()
-            profile.save()
-            if oldCoverImagePath and oldCoverImagePath != UserProfile.DEFAULT_COVER_IMAGE_NAME:
-                profile.icon.storage.delete(oldCoverImagePath)
-
-            if oldIconPath and oldIconPath != UserProfile.DEFAULT_ICON_NAME:
-                profile.icon.storage.delete(oldIconPath)
-
-        except UserProfile.DoesNotExist:
-            profile = UserProfile(
-                user=user, 
-                self_introduction=kwargs.get("self_introduction", ""), 
-                icon=kwargs.get("icon", None), 
-                cover_image=kwargs.get("cover_image", None), 
-            )
-
-            if "user_name" in kwargs:
-                profile.user.username = kwargs["user_name"]
-                profile.user.full_clean()
-                profile.user.save()
-
-            if profile.icon:
-                names = profile.icon.name.split(".")
-                profile.icon.name = hashlib.md5(names[0].encode()).hexdigest() + "." + names[len(names)-1]
-
-            if profile.cover_image:
-                names = profile.cover_image.name.split(".")
-                profile.cover_image.name = hashlib.md5(names[0].encode()).hexdigest() + "." + names[len(names)-1]
-
-            profile.full_clean()
-            profile.save() 
-
-        return EditProfile(ok=True)
 
 
 class CreateChatroom(graphene.Mutation):
@@ -435,6 +303,5 @@ class Mutation(graphene.ObjectType):
     enter_public_chatroom = EnterPublicChatroom().Field()
     enter_private_chatroom = EnterPrivateChatroom().Field()
     exit_chatroom = ExitChatroom().Field()
-    edit_profile = EditProfile().Field()
 
 schema = graphene.Schema(query=Query, mutation=Mutation)

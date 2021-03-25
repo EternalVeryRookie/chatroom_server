@@ -2,7 +2,7 @@
 
 from django.db import migrations, models
 import django.db.models.deletion
-import validators.image
+import common.validators.image
 
 
 class Migration(migrations.Migration):
@@ -47,8 +47,8 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('self_introduction', models.CharField(blank=True, max_length=256)),
-                ('icon', models.ImageField(default='uploads/DefaultIconImage.png', upload_to='uploads/', validators=[validators.image.MaxFileSizeValidator(52428800), validators.image.ImageAspectRatioValidator(validators.image.WidthHeight(1, 1))])),
-                ('cover_image', models.ImageField(default='uploads/DefaultCoverImage.png', upload_to='uploads/', validators=[validators.image.MaxFileSizeValidator(52428800), validators.image.ImageAspectRatioValidator(validators.image.WidthHeight(height=1, width=3))])),
+                ('icon', models.ImageField(default='uploads/DefaultIconImage.png', upload_to='uploads/', validators=[common.validators.image.MaxFileSizeValidator(52428800), common.validators.image.ImageAspectRatioValidator(common.validators.image.WidthHeight(1, 1))])),
+                ('cover_image', models.ImageField(default='uploads/DefaultCoverImage.png', upload_to='uploads/', validators=[common.validators.image.MaxFileSizeValidator(52428800), common.validators.image.ImageAspectRatioValidator(common.validators.image.WidthHeight(height=1, width=3))])),
                 ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, to='users.username')),
             ],
         ),

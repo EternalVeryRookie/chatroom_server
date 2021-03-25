@@ -50,6 +50,7 @@ class GoogleAuth:
         session["google-user"] = {
             "id": payload["sub"]
         }
+        session.save()
         
         return username, payload["sub"], payload["email"]
         

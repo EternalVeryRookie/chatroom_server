@@ -1,34 +1,7 @@
 from typing import Final
 
-from validators.image import MaxFileSizeValidator, ImageAspectRatioValidator, WidthHeight
-
 from users.models import UserName
 from django.db import models, transaction
-
-
-class UserProfile(models.Model):
-    DEFAULT_ICON_NAME: Final[str] = "uploads/DefaultIconImage.png"
-    DEFAULT_COVER_IMAGE_NAME: Final[str] = "uploads/DefaultCoverImage.png"
-
-    user = models.OneToOneField(UserName, on_delete=models.CASCADE)
-    self_introduction = models.CharField(max_length=256, blank=True)
-    LIMIT_BYTE: Final[int] = 50 * 1024 * 1024
-    icon = models.ImageField(
-        upload_to="uploads/", 
-        validators=[
-            MaxFileSizeValidator(LIMIT_BYTE),
-            ImageAspectRatioValidator(WidthHeight(1, 1))
-            ], 
-        default=DEFAULT_ICON_NAME
-    )
-    cover_image = models.ImageField(
-        upload_to="uploads/", 
-        validators=[
-            MaxFileSizeValidator(LIMIT_BYTE),
-            ImageAspectRatioValidator(WidthHeight(width=3, height=1))
-        ], 
-        default=DEFAULT_COVER_IMAGE_NAME
-    )
 
 
 class AbstractChatroom(models.Model):

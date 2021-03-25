@@ -1,4 +1,4 @@
-import typing
+from typing import Final
 
 from django.db import transaction
 from django.core.validators import EmailValidator
@@ -8,6 +8,9 @@ from django.contrib.auth.validators import UnicodeUsernameValidator, ASCIIUserna
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+
+from common.validators.image import MaxFileSizeValidator, ImageAspectRatioValidator, WidthHeight
+
 
 class FailedAssignSequentialNumber(Exception):
     """
@@ -23,19 +26,18 @@ class UserNameQuerySet(models.QuerySet):
         重複をなくした上でユーザー名を登録する
         """
 
+        base_name = get_user_model().normalize_username(username)
+        tmp_name = base_name
+
         for i in range(200000):
-            tmp_name = username
-            try:
-                name = UserName(username=get_user_model().normalize_username(tmp_name))
-                name.full_clean()
+            if not UserName.objects.filter(username=tmp_name).exists():
+                name = UserName(username=tmp_name)
                 name.save()
                 return name
-            except ValidationError:
-                tmp_name = username + str(i)
-                i+=1
+            
+            tmp_name = f"{base_name}{i}"
 
         raise FailedAssignSequentialNumber("連番の付与に失敗しました。ユーザー名%sは使用されすぎています" % username)
-
 
     def create(self, **kwargs):
         username: UserName = get_user_model().normalize_username(kwargs["username"])
@@ -156,8 +158,8 @@ class UserOnGoogle(models.Model):
     class UserOnGoogleQuerySet(models.QuerySet):
         def create(self, **kwargs):
             with transaction.atomic():
-                UserName.objects.create_assign_sequential_number(kwargs["username"])
-                return self.create(id=kwargs["sub"], email=kwargs["email"], username=kwargs["username"])
+                username = UserName.objects.create_assign_sequential_number(kwargs["username"])
+                return super().create(id=kwargs["id"], email=kwargs["email"], username=username)
 
     #id tokenのsub属性を利用する。Googleのサービスで一意の識別子で変更されない
     #参考　https://developers.google.com/identity/protocols/oauth2/openid-connect#createxsrftoken
@@ -194,3 +196,28 @@ class UserOnGoogle(models.Model):
     @property
     def name(self):
         return self.username
+
+
+class UserProfile(models.Model):
+    DEFAULT_ICON_NAME: Final[str] = "uploads/DefaultIconImage.png"
+    DEFAULT_COVER_IMAGE_NAME: Final[str] = "uploads/DefaultCoverImage.png"
+
+    user = models.OneToOneField(UserName, on_delete=models.CASCADE)
+    self_introduction = models.CharField(max_length=256, blank=True)
+    LIMIT_BYTE: Final[int] = 50 * 1024 * 1024
+    icon = models.ImageField(
+        upload_to="uploads/", 
+        validators=[
+            MaxFileSizeValidator(LIMIT_BYTE),
+            ImageAspectRatioValidator(WidthHeight(1, 1))
+            ], 
+        default=DEFAULT_ICON_NAME
+    )
+    cover_image = models.ImageField(
+        upload_to="uploads/", 
+        validators=[
+            MaxFileSizeValidator(LIMIT_BYTE),
+            ImageAspectRatioValidator(WidthHeight(width=3, height=1))
+        ], 
+        default=DEFAULT_COVER_IMAGE_NAME
+    )

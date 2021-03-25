@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
-from .models import UserName, UserOnMyApp, UserOnGoogle
+from .models import UserName, UserOnMyApp, UserOnGoogle, UserProfile
 # Register your models here.
 
 @admin.register(UserOnMyApp)
@@ -34,3 +34,8 @@ class UserNameAdmin(admin.ModelAdmin):
         return obj.email
 
 admin.site.register(UserName, UserNameAdmin)
+
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ("user", "self_introduction", "icon", "cover_image")
